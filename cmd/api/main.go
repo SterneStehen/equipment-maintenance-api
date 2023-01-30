@@ -2,30 +2,55 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/SterneStehen/equipment-maintenance-api/internal/config"
+	"github.com/SterneStehen/equipment-maintenance-api/internal/database"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/server"
 )
 
 func main() {
 	logger := log.New(os.Stdout, "api: ", log.Ldate|log.Ltime|log.LUTC)
+	if err := run(logger); err != nil {
+		logger.Printf("error: %v", err)
+		os.Exit(1)
+	}
+}
 
+func run(logger *log.Logger) error {
 	cfg, err := config.Load()
 	if err != nil {
-		logger.Fatalf("configuration error: %v", err)
+		return fmt.Errorf("configuration error: %w", err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Ten seconds keeps a bad database host from hanging startup forever
+	dbCtx, cancelDB := context.WithTimeout(ctx, 10*time.Second)
+	pool, err := database.Open(dbCtx, database.Config{
+		URL:            cfg.DatabaseURL,
+		MaxConnections: cfg.DBMaxConnections,
+		MinConnections: cfg.DBMinConnections,
+	})
+	cancelDB()
+	if err != nil {
+		return fmt.Errorf("database startup error: %w", err)
+	}
+	defer pool.Close()
+	logger.Print("database connection ready")
+
 	httpServer := server.New(cfg.HTTPAddress, server.NewRouter())
 	logger.Printf("listening on %s", cfg.HTTPAddress)
 	if err := httpServer.Run(ctx); err != nil {
-		logger.Fatalf("HTTP server error: %v", err)
+		return fmt.Errorf("HTTP server error: %w", err)
 	}
 	logger.Print("HTTP server stopped")
+
+	return nil
 }

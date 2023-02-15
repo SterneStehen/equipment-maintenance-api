@@ -1,23 +1,29 @@
 # Equipment Maintenance API
 
-Equipment Maintenance API is a Go service for managing industrial equipment and its maintenance lifecycle. The current foundation exposes a health endpoint, validates all startup configuration, and shuts down gracefully. Later phases add PostgreSQL persistence, authentication, equipment, and work-order workflows.
+Equipment Maintenance API is a Go service for managing industrial equipment and its maintenance lifecycle. The current foundation exposes a health endpoint, validates startup configuration, connects to PostgreSQL through `pgxpool`, and shuts down gracefully. Later phases add authentication, equipment, and work-order workflows.
 
 > Technology baseline date: January 10, 2023. This project intentionally uses the versions of Go and libraries available as of that date.
 
 ## Requirements
 
 - Go 1.19
+- Docker with Docker Compose
 - environment variables listed below
+
+The database foundation uses PostgreSQL 14.6, `pgx`/`pgxpool` 4.17.2, and `golang-migrate` 4.15.2. All were available before the technology baseline date.
 
 ## Run locally
 
-Copy the example configuration, replace the placeholder JWT secret, and export the variables before starting the service:
+Copy the example configuration, replace the placeholder JWT secret, start PostgreSQL, and apply migrations before starting the service:
 
 ```sh
 cp .env.example .env
 set -a
 . ./.env
 set +a
+make db-up
+make db-wait
+make migrate-up
 make run
 ```
 
@@ -42,7 +48,25 @@ curl -i http://localhost:8080/health
 | `DB_MAX_CONNECTIONS` | Maximum database pool size, at least 1 | `10` |
 | `DB_MIN_CONNECTIONS` | Minimum database pool size, from 0 through the maximum | `2` |
 
-Startup fails with a combined, actionable error when configuration is missing or invalid. Database settings are validated now and will be consumed when persistence is introduced.
+Startup fails with a combined, actionable error when configuration is missing or invalid. The service also verifies its database connection at startup and exits clearly if PostgreSQL is unavailable.
+
+## PostgreSQL and migrations
+
+Docker Compose runs PostgreSQL 14.6 only; the Go application runs directly on the host. The database uses a named volume so `make db-down` preserves local data.
+
+```sh
+make db-up          # start PostgreSQL 14.6
+make db-wait        # wait until PostgreSQL accepts connections
+make migrate-up     # apply all pending migrations
+make migrate-version
+make migrate-down   # roll back one migration
+make db-down        # stop PostgreSQL and preserve data
+make db-clean       # stop PostgreSQL and remove local database data
+```
+
+Migration files live in `migrations/` as matching, sequentially numbered `.up.sql` and `.down.sql` files. Migrations are explicit SQL and each multi-statement migration is transaction-wrapped. Apply migrations explicitly before starting a newly deployed application version; the API does not mutate its schema automatically.
+
+The initial migration creates `users` with normalized unique email, role and non-empty value constraints, timezone-aware timestamps, and a role index. Rollback drops the table.
 
 ## Development commands
 
@@ -50,12 +74,15 @@ Startup fails with a combined, actionable error when configuration is missing or
 make fmt       # format Go source
 make test      # run tests
 make test-race # run tests with the race detector
+make test-integration # start PostgreSQL and test pool/migrations
 make vet       # run static analysis
 make check     # run all verification commands
 ```
 
+`make test-integration` creates a disposable PostgreSQL instance under a separate Compose project on port `55432`, validates `up → down → up`, and removes its container and volume afterward. Override `TEST_POSTGRES_PORT` if that port is already in use. Never point the integration test at a database containing data that must be preserved because it deliberately exercises rollback.
+
 ## Architecture
 
-The repository uses a domain-oriented layout. `cmd/api` is the executable composition root. Packages under `internal` separate configuration and HTTP infrastructure from the `user`, `equipment`, `workorder`, and `maintenance` domains. Handlers own HTTP concerns, services will own business rules, and repositories will own parameterized SQL.
+The repository uses a domain-oriented layout. `cmd/api` is the executable composition root and `cmd/migrate` is the migration runner. Packages under `internal` separate configuration, database, and HTTP infrastructure from the `user`, `equipment`, `workorder`, and `maintenance` domains. Handlers own HTTP concerns, services will own business rules, and repositories will own parameterized SQL.
 
-Only `GET /health` is implemented in this phase. See `docs/SPEC.md` for the complete product requirements and `docs/PLAN.md` for delivery status.
+Only `GET /health` is exposed by the API in the current foundation; domain endpoints are added in subsequent phases.

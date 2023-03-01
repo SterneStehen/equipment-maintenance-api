@@ -7,11 +7,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// NewRouter builds the HTTP handler and registers all application routes.
 func NewRouter() http.Handler {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
-	router.GET("/health", health.Handler)
+	router.GET("/health", health.Check)
 	return router
 }

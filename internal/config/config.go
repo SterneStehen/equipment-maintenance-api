@@ -37,7 +37,7 @@ func Load() (Config, error) {
 		issues = append(issues, "DATABASE_URL "+err.Error())
 	}
 
-	// Keep the raw secret
+	// Keep this exactly as it came in; trimming a secret changes it
 	cfg.JWTSecret = os.Getenv("JWT_SECRET")
 	if strings.TrimSpace(cfg.JWTSecret) == "" {
 		issues = append(issues, "JWT_SECRET is required")
@@ -50,7 +50,6 @@ func Load() (Config, error) {
 		issues = append(issues, "DB_MIN_CONNECTIONS must not exceed DB_MAX_CONNECTIONS")
 	}
 
-	// Report everything at once; fixing one env var per restart gets old fast
 	if len(issues) > 0 {
 		return Config{}, fmt.Errorf("invalid configuration: %s", strings.Join(issues, "; "))
 	}

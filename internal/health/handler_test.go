@@ -13,7 +13,7 @@ func TestHealthEndpoint(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/health", nil)
 	response := httptest.NewRecorder()
 
-	server.NewRouter().ServeHTTP(response, request)
+	server.NewRouter(server.Dependencies{}).ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("status code = %d, want %d", response.Code, http.StatusOK)
@@ -35,7 +35,7 @@ func TestHealthEndpointRejectsOtherMethods(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/health", nil)
 	response := httptest.NewRecorder()
 
-	server.NewRouter().ServeHTTP(response, request)
+	server.NewRouter(server.Dependencies{}).ServeHTTP(response, request)
 
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("status code = %d, want %d", response.Code, http.StatusNotFound)

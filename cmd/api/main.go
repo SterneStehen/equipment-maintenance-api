@@ -9,9 +9,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/SterneStehen/equipment-maintenance-api/internal/auth"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/config"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/database"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/server"
+	"github.com/SterneStehen/equipment-maintenance-api/internal/user"
 )
 
 func main() {
@@ -31,7 +33,6 @@ func run(logger *log.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Ten seconds keeps a bad database host from hanging startup forever
 	dbCtx, cancelDB := context.WithTimeout(ctx, 10*time.Second)
 	pool, err := database.Open(dbCtx, database.Config{
 		URL:            cfg.DatabaseURL,
@@ -45,7 +46,12 @@ func run(logger *log.Logger) error {
 	defer pool.Close()
 	logger.Print("database connection ready")
 
-	httpServer := server.New(cfg.HTTPAddress, server.NewRouter())
+	users := user.NewService(user.NewRepository(pool))
+	tokens := auth.NewManager(cfg.JWTSecret, cfg.JWTTTL)
+	authHandler := auth.NewHandler(users, tokens)
+	router := server.NewRouter(server.Dependencies{Auth: authHandler, Tokens: tokens})
+
+	httpServer := server.New(cfg.HTTPAddress, router)
 	logger.Printf("listening on %s", cfg.HTTPAddress)
 	if err := httpServer.Run(ctx); err != nil {
 		return fmt.Errorf("HTTP server error: %w", err)

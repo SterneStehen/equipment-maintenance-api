@@ -35,7 +35,7 @@ func New(address string, handler http.Handler) *Server {
 }
 
 func (s *Server) Run(ctx context.Context) error {
-	// Fail here if the port is already busy
+	// Bind now so a busy port fails before anything else starts
 	ln, err := net.Listen("tcp", s.httpServer.Addr)
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", s.httpServer.Addr, err)

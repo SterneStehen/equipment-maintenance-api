@@ -43,7 +43,6 @@ func TestPostgreSQLPoolAndUsersMigrationLifecycle(t *testing.T) {
 
 	migrator := openTestMigrator(t, databaseURL)
 	defer closeTestMigrator(t, migrator)
-	// The test database is disposable, so clear whatever an interrupted run left behind
 	if err := migrator.Down(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		t.Fatalf("reset migrations: %v", err)
 	}

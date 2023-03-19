@@ -28,7 +28,6 @@ func Open(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("configure database pool: minimum connections must not exceed maximum connections")
 	}
 
-	// pgx accepts DSNs too; the outer config is stricter on purpose
 	pgcfg, err := pgxpool.ParseConfig(cfg.URL)
 	if err != nil {
 		return nil, fmt.Errorf("parse database configuration: %w", err)

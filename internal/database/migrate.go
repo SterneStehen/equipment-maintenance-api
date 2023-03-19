@@ -17,7 +17,7 @@ func NewMigrator(databaseURL, migrationsPath string) (*migrate.Migrate, error) {
 		return nil, fmt.Errorf("resolve migrations path: %w", err)
 	}
 
-	// Tests don't always run from the repo root, so make this absolute
+	// Tests don't always start in the repo root, so use the full path here
 	filesURL := (&url.URL{Scheme: "file", Path: filepath.ToSlash(absPath)}).String()
 	dbURL, err := url.Parse(databaseURL)
 	if err != nil {
@@ -32,7 +32,6 @@ func NewMigrator(databaseURL, migrationsPath string) (*migrate.Migrate, error) {
 	if strings.Trim(dbURL.Path, "/") == "" {
 		return nil, fmt.Errorf("parse migration database URL: database name is required")
 	}
-	// migrate names this driver "pgx" even though the app uses a postgres URL
 	dbURL.Scheme = "pgx"
 
 	migrator, err := migrate.New(filesURL, dbURL.String())

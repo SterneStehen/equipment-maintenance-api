@@ -1,8 +1,6 @@
 # Equipment Maintenance API
 
-Equipment Maintenance API is a Go service for managing industrial equipment and its maintenance lifecycle. The current foundation exposes a health endpoint, validates startup configuration, connects to PostgreSQL through `pgxpool`, and shuts down gracefully. Later phases add authentication, equipment, and work-order workflows.
-
-> Technology baseline date: January 10, 2023. This project intentionally uses the versions of Go and libraries available as of that date.
+Equipment Maintenance API is a Go service for managing industrial equipment and its maintenance lifecycle. The current application provides user registration, JWT authentication, a health endpoint, PostgreSQL persistence through `pgxpool`, and graceful shutdown. Later phases add equipment and work-order workflows.
 
 ## Requirements
 
@@ -68,6 +66,31 @@ Migration files live in `migrations/` as matching, sequentially numbered `.up.sq
 
 The initial migration creates `users` with normalized unique email, role and non-empty value constraints, timezone-aware timestamps, and a role index. Rollback drops the table.
 
+## Users and authentication
+
+Public registration never accepts a role. The first committed registration becomes `admin`; PostgreSQL serializes the empty-table decision so concurrent requests cannot create multiple initial administrators. Every later registration receives `viewer`.
+
+Passwords must contain 8 to 72 bytes. Emails are trimmed and lowercased before lookup and storage, while passwords are stored only as bcrypt hashes. Login returns an HS256 JWT using `JWT_SECRET` and `JWT_TTL`. Password hashes and the signing secret are excluded from API responses.
+
+```sh
+curl -X POST http://localhost:8080/api/v1/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@example.com","password":"change-me-now","full_name":"Initial Admin"}'
+
+curl -X POST http://localhost:8080/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@example.com","password":"change-me-now"}'
+
+curl http://localhost:8080/api/v1/users/me \
+  -H 'Authorization: Bearer <access_token>'
+```
+
+Authentication errors use the same JSON envelope as other API errors:
+
+```json
+{"error":{"code":"invalid_credentials","message":"Email or password is incorrect"}}
+```
+
 ## Development commands
 
 ```sh
@@ -85,4 +108,4 @@ make check     # run all verification commands
 
 The repository uses a domain-oriented layout. `cmd/api` is the executable composition root and `cmd/migrate` is the migration runner. Packages under `internal` separate configuration, database, and HTTP infrastructure from the `user`, `equipment`, `workorder`, and `maintenance` domains. Handlers own HTTP concerns, services will own business rules, and repositories will own parameterized SQL.
 
-Only `GET /health` is exposed by the API in the current foundation; domain endpoints are added in subsequent phases.
+The implemented HTTP surface is `GET /health`, `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, and authenticated `GET /api/v1/users/me`. Equipment and work-order endpoints are added in subsequent phases.

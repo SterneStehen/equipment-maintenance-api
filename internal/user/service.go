@@ -13,6 +13,8 @@ type store interface {
 	Create(ctx context.Context, email, passwordHash, fullName string) (User, error)
 	ByEmail(ctx context.Context, email string) (User, error)
 	ByID(ctx context.Context, id int64) (User, error)
+	List(ctx context.Context) ([]User, error)
+	UpdateRole(ctx context.Context, id int64, role Role) (User, error)
 }
 
 type passOps interface {
@@ -44,6 +46,11 @@ type RegisterInput struct {
 	FullName string
 }
 
+type Actor struct {
+	UserID int64
+	Role   Role
+}
+
 func NewService(repo store) *Service {
 	return &Service{repo: repo, pass: bcryptPass{cost: bcrypt.DefaultCost}}
 }
@@ -61,7 +68,7 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (User, error) 
 		return User{}, ErrInvalidPassword
 	}
 
-	// Do the slow bcrypt work before the repository opens its transaction
+	// Hash first; holding a db transaction while bcrypt works is just wasting time
 	hash, err := s.pass.Hash(in.Password)
 	if err != nil {
 		return User{}, err
@@ -90,6 +97,53 @@ func (s *Service) Authenticate(ctx context.Context, rawEmail, password string) (
 
 func (s *Service) ByID(ctx context.Context, id int64) (User, error) {
 	return s.repo.ByID(ctx, id)
+}
+
+func (s *Service) List(ctx context.Context, actor Actor) ([]User, error) {
+	if err := s.needAdmin(ctx, actor); err != nil {
+		return nil, err
+	}
+	return s.repo.List(ctx)
+}
+
+func (s *Service) Lookup(ctx context.Context, actor Actor, id int64) (User, error) {
+	if err := s.needAdmin(ctx, actor); err != nil {
+		return User{}, err
+	}
+	if id < 1 {
+		return User{}, ErrNotFound
+	}
+	return s.repo.ByID(ctx, id)
+}
+
+func (s *Service) AssignRole(ctx context.Context, actor Actor, id int64, role Role) (User, error) {
+	if err := s.needAdmin(ctx, actor); err != nil {
+		return User{}, err
+	}
+	if id < 1 {
+		return User{}, ErrNotFound
+	}
+	if !role.Valid() {
+		return User{}, ErrInvalidRole
+	}
+	return s.repo.UpdateRole(ctx, id, role)
+}
+
+func (s *Service) needAdmin(ctx context.Context, a Actor) error {
+	if a.UserID < 1 {
+		return ErrPermissionDenied
+	}
+	usr, err := s.repo.ByID(ctx, a.UserID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return ErrPermissionDenied
+		}
+		return err
+	}
+	if usr.Role != RoleAdmin {
+		return ErrPermissionDenied
+	}
+	return nil
 }
 
 func cleanEmail(raw string) (string, error) {

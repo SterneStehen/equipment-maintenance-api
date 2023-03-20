@@ -35,4 +35,7 @@ var (
 	ErrInvalidEmail       = errors.New("invalid email")
 	ErrInvalidPassword    = errors.New("invalid password")
 	ErrInvalidName        = errors.New("invalid full name")
+	ErrInvalidRole        = errors.New("invalid role")
+	ErrPermissionDenied   = errors.New("permission denied")
+	ErrLastAdmin          = errors.New("last administrator cannot lose admin role")
 )

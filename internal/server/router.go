@@ -5,6 +5,7 @@ import (
 
 	"github.com/SterneStehen/equipment-maintenance-api/internal/auth"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/health"
+	"github.com/SterneStehen/equipment-maintenance-api/internal/user"
 	"github.com/gin-gonic/gin"
 )
 
@@ -23,7 +24,13 @@ func NewRouter(deps Dependencies) http.Handler {
 		v1 := router.Group("/api/v1")
 		v1.POST("/auth/register", deps.Auth.Register)
 		v1.POST("/auth/login", deps.Auth.Login)
-		v1.GET("/users/me", deps.Tokens.Middleware(), deps.Auth.Me)
+		protected := v1.Group("", deps.Tokens.Middleware())
+		protected.GET("/users/me", deps.Auth.Me)
+
+		admins := protected.Group("", auth.RequireRole(user.RoleAdmin))
+		admins.GET("/admin/users", deps.Auth.ListUsers)
+		admins.GET("/admin/users/:id", deps.Auth.GetUser)
+		admins.PATCH("/admin/users/:id/role", deps.Auth.UpdateUserRole)
 	}
 	return router
 }

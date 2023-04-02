@@ -111,3 +111,59 @@ func TestConcurrentInitialRegistrationCreatesOneAdministrator(t *testing.T) {
 	assert.NotEqual(t, "password2", storedHash)
 	assert.NoError(t, bcrypt.CompareHashAndPassword([]byte(storedHash), []byte("password2")))
 }
+
+func TestRoleAssignmentProtectsLastAdministrator(t *testing.T) {
+	dbURL := os.Getenv("TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	m, err := appdb.NewMigrator(dbURL, "../../migrations")
+	require.NoError(t, err)
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		t.Fatalf("apply migrations: %v", err)
+	}
+	sourceErr, databaseErr := m.Close()
+	require.NoError(t, sourceErr)
+	require.NoError(t, databaseErr)
+
+	pool, err := appdb.Open(ctx, appdb.Config{URL: dbURL, MaxConnections: 5, MinConnections: 1})
+	require.NoError(t, err)
+	defer pool.Close()
+	_, err = pool.Exec(ctx, "TRUNCATE users RESTART IDENTITY")
+	require.NoError(t, err)
+
+	svc := NewService(NewRepository(pool))
+	svc.pass = bcryptPass{cost: bcrypt.MinCost}
+
+	admin, err := svc.Register(ctx, RegisterInput{Email: "admin@example.com", Password: "password1", FullName: "Admin User"})
+	require.NoError(t, err)
+	require.Equal(t, RoleAdmin, admin.Role)
+	viewer, err := svc.Register(ctx, RegisterInput{Email: "viewer@example.com", Password: "password1", FullName: "Viewer User"})
+	require.NoError(t, err)
+	require.Equal(t, RoleViewer, viewer.Role)
+
+	_, err = svc.AssignRole(ctx, Actor{UserID: viewer.ID}, admin.ID, RoleViewer)
+	require.ErrorIs(t, err, ErrPermissionDenied)
+
+	_, err = svc.AssignRole(ctx, Actor{UserID: admin.ID}, admin.ID, RoleViewer)
+	require.ErrorIs(t, err, ErrLastAdmin)
+
+	viewer, err = svc.AssignRole(ctx, Actor{UserID: admin.ID}, viewer.ID, RoleAdmin)
+	require.NoError(t, err)
+	require.Equal(t, RoleAdmin, viewer.Role)
+
+	admin, err = svc.AssignRole(ctx, Actor{UserID: viewer.ID}, admin.ID, RoleDispatcher)
+	require.NoError(t, err)
+	require.Equal(t, RoleDispatcher, admin.Role)
+
+	arr, err := svc.List(ctx, Actor{UserID: viewer.ID})
+	require.NoError(t, err)
+	require.Len(t, arr, 2)
+
+	_, err = svc.Lookup(ctx, Actor{UserID: viewer.ID}, 999)
+	require.ErrorIs(t, err, ErrNotFound)
+}

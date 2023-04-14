@@ -10,9 +10,11 @@ import (
 )
 
 type fakeStore struct {
-	createFn  func(context.Context, string, string, string) (User, error)
-	byEmailFn func(context.Context, string) (User, error)
-	byIDFn    func(context.Context, int64) (User, error)
+	createFn     func(context.Context, string, string, string) (User, error)
+	byEmailFn    func(context.Context, string) (User, error)
+	byIDFn       func(context.Context, int64) (User, error)
+	listFn       func(context.Context) ([]User, error)
+	updateRoleFn func(context.Context, int64, Role) (User, error)
 }
 
 func (f fakeStore) Create(ctx context.Context, email, hash, name string) (User, error) {
@@ -25,6 +27,14 @@ func (f fakeStore) ByEmail(ctx context.Context, email string) (User, error) {
 
 func (f fakeStore) ByID(ctx context.Context, id int64) (User, error) {
 	return f.byIDFn(ctx, id)
+}
+
+func (f fakeStore) List(ctx context.Context) ([]User, error) {
+	return f.listFn(ctx)
+}
+
+func (f fakeStore) UpdateRole(ctx context.Context, id int64, role Role) (User, error) {
+	return f.updateRoleFn(ctx, id, role)
 }
 
 type fakePasswords struct {
@@ -126,4 +136,67 @@ func TestUserPasswordHashIsNotSerialized(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, string(raw), "do-not-return")
 	assert.NotContains(t, string(raw), "password_hash")
+}
+
+func TestAdminOnlyUserActions(t *testing.T) {
+	admin := User{ID: 1, Email: "admin@example.com", Role: RoleAdmin}
+	viewer := User{ID: 2, Email: "viewer@example.com", Role: RoleViewer}
+	repo := fakeStore{
+		byIDFn: func(_ context.Context, id int64) (User, error) {
+			if id == admin.ID {
+				return admin, nil
+			}
+			if id == viewer.ID {
+				return viewer, nil
+			}
+			return User{}, ErrNotFound
+		},
+		listFn: func(context.Context) ([]User, error) {
+			return []User{admin, viewer}, nil
+		},
+		updateRoleFn: func(_ context.Context, id int64, role Role) (User, error) {
+			require.Equal(t, viewer.ID, id)
+			viewer.Role = role
+			return viewer, nil
+		},
+	}
+	svc := NewService(repo)
+
+	arr, err := svc.List(context.Background(), Actor{UserID: admin.ID})
+	require.NoError(t, err)
+	require.Len(t, arr, 2)
+
+	u, err := svc.Lookup(context.Background(), Actor{UserID: admin.ID}, viewer.ID)
+	require.NoError(t, err)
+	assert.Equal(t, viewer.Email, u.Email)
+
+	changed, err := svc.AssignRole(context.Background(), Actor{UserID: admin.ID}, viewer.ID, RoleDispatcher)
+	require.NoError(t, err)
+	assert.Equal(t, RoleDispatcher, changed.Role)
+}
+
+func TestUserActionsDenyNonAdminsAndBadRoles(t *testing.T) {
+	repo := fakeStore{byIDFn: func(_ context.Context, id int64) (User, error) {
+		if id == 8 {
+			return User{ID: 8, Role: RoleViewer}, nil
+		}
+		return User{}, ErrNotFound
+	}}
+	svc := NewService(repo)
+
+	_, err := svc.List(context.Background(), Actor{UserID: 8})
+	require.ErrorIs(t, err, ErrPermissionDenied)
+
+	_, err = svc.AssignRole(context.Background(), Actor{UserID: 8}, 2, RoleAdmin)
+	require.ErrorIs(t, err, ErrPermissionDenied)
+
+	_, err = svc.AssignRole(context.Background(), Actor{UserID: 99}, 2, Role("boss"))
+	require.ErrorIs(t, err, ErrPermissionDenied)
+
+	adminRepo := fakeStore{byIDFn: func(context.Context, int64) (User, error) {
+		return User{ID: 1, Role: RoleAdmin}, nil
+	}}
+	svc = NewService(adminRepo)
+	_, err = svc.AssignRole(context.Background(), Actor{UserID: 1}, 2, Role("boss"))
+	require.ErrorIs(t, err, ErrInvalidRole)
 }

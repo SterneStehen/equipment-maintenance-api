@@ -22,6 +22,9 @@ type fakeUsers struct {
 	registerFn     func(context.Context, user.RegisterInput) (user.User, error)
 	authenticateFn func(context.Context, string, string) (user.User, error)
 	byIDFn         func(context.Context, int64) (user.User, error)
+	listFn         func(context.Context, user.Actor) ([]user.User, error)
+	lookupFn       func(context.Context, user.Actor, int64) (user.User, error)
+	assignRoleFn   func(context.Context, user.Actor, int64, user.Role) (user.User, error)
 }
 
 func (f fakeUsers) Register(ctx context.Context, in user.RegisterInput) (user.User, error) {
@@ -34,6 +37,18 @@ func (f fakeUsers) Authenticate(ctx context.Context, email, password string) (us
 
 func (f fakeUsers) ByID(ctx context.Context, id int64) (user.User, error) {
 	return f.byIDFn(ctx, id)
+}
+
+func (f fakeUsers) List(ctx context.Context, actor user.Actor) ([]user.User, error) {
+	return f.listFn(ctx, actor)
+}
+
+func (f fakeUsers) Lookup(ctx context.Context, actor user.Actor, id int64) (user.User, error) {
+	return f.lookupFn(ctx, actor, id)
+}
+
+func (f fakeUsers) AssignRole(ctx context.Context, actor user.Actor, id int64, role user.Role) (user.User, error) {
+	return f.assignRoleFn(ctx, actor, id, role)
 }
 
 func TestRegisterHandlerIgnoresRoleAndHidesPassword(t *testing.T) {
@@ -102,6 +117,101 @@ func TestProtectedRouteRejectsMissingAndInvalidTokens(t *testing.T) {
 	assert.Contains(t, invalid.Body.String(), `"code":"unauthorized"`)
 }
 
+func TestAdminRoutesPermissionMatrix(t *testing.T) {
+	admin := sampleUser()
+	admin.Role = user.RoleAdmin
+	admin.ID = 1
+	viewer := sampleUser()
+	viewer.ID = 2
+	viewer.Role = user.RoleViewer
+
+	users := fakeUsers{listFn: func(_ context.Context, actor user.Actor) ([]user.User, error) {
+		require.Equal(t, admin.ID, actor.UserID)
+		return []user.User{admin, viewer}, nil
+	}}
+	router, secret := testRouter(users)
+	adminToken := tokenFor(t, secret, admin)
+	viewerToken := tokenFor(t, secret, viewer)
+
+	missing := perform(router, http.MethodGet, "/api/v1/admin/users", "", "")
+	assert.Equal(t, http.StatusUnauthorized, missing.Code)
+
+	forbidden := perform(router, http.MethodGet, "/api/v1/admin/users", "", "Bearer "+viewerToken)
+	assert.Equal(t, http.StatusForbidden, forbidden.Code)
+	assert.Contains(t, forbidden.Body.String(), `"code":"forbidden"`)
+
+	ok := perform(router, http.MethodGet, "/api/v1/admin/users", "", "Bearer "+adminToken)
+	require.Equal(t, http.StatusOK, ok.Code)
+	assert.Contains(t, ok.Body.String(), `"email":"person@example.com"`)
+	assert.NotContains(t, ok.Body.String(), "stored-password-hash")
+}
+
+func TestAdminLookupAndRoleUpdate(t *testing.T) {
+	admin := sampleUser()
+	admin.ID = 1
+	admin.Role = user.RoleAdmin
+	var gotRole user.Role
+	users := fakeUsers{
+		lookupFn: func(_ context.Context, actor user.Actor, id int64) (user.User, error) {
+			require.Equal(t, admin.ID, actor.UserID)
+			require.Equal(t, int64(9), id)
+			u := sampleUser()
+			u.ID = id
+			return u, nil
+		},
+		assignRoleFn: func(_ context.Context, actor user.Actor, id int64, role user.Role) (user.User, error) {
+			require.Equal(t, admin.ID, actor.UserID)
+			require.Equal(t, int64(9), id)
+			gotRole = role
+			u := sampleUser()
+			u.ID = id
+			u.Role = role
+			return u, nil
+		},
+	}
+	router, secret := testRouter(users)
+	token := tokenFor(t, secret, admin)
+
+	found := perform(router, http.MethodGet, "/api/v1/admin/users/9", "", "Bearer "+token)
+	require.Equal(t, http.StatusOK, found.Code)
+	assert.Contains(t, found.Body.String(), `"id":9`)
+
+	changed := perform(router, http.MethodPatch, "/api/v1/admin/users/9/role", `{"role":"dispatcher"}`, "Bearer "+token)
+	require.Equal(t, http.StatusOK, changed.Code)
+	assert.Equal(t, user.RoleDispatcher, gotRole)
+	assert.Contains(t, changed.Body.String(), `"role":"dispatcher"`)
+}
+
+func TestAdminRoleErrors(t *testing.T) {
+	admin := sampleUser()
+	admin.ID = 1
+	admin.Role = user.RoleAdmin
+	tests := []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{name: "bad role", err: user.ErrInvalidRole, status: http.StatusBadRequest, code: "invalid_role"},
+		{name: "missing user", err: user.ErrNotFound, status: http.StatusNotFound, code: "not_found"},
+		{name: "last admin", err: user.ErrLastAdmin, status: http.StatusConflict, code: "last_admin"},
+		{name: "service deny", err: user.ErrPermissionDenied, status: http.StatusForbidden, code: "forbidden"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			users := fakeUsers{assignRoleFn: func(context.Context, user.Actor, int64, user.Role) (user.User, error) {
+				return user.User{}, tt.err
+			}}
+			router, secret := testRouter(users)
+			token := tokenFor(t, secret, admin)
+			res := perform(router, http.MethodPatch, "/api/v1/admin/users/2/role", `{"role":"viewer"}`, "Bearer "+token)
+			assert.Equal(t, tt.status, res.Code)
+			assert.Contains(t, res.Body.String(), `"code":"`+tt.code+`"`)
+		})
+	}
+}
+
 func TestAuthHandlerErrors(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -142,6 +252,13 @@ func sampleUser() user.User {
 		CreatedAt: time.Date(2023, 1, 10, 12, 0, 0, 0, time.UTC),
 		UpdatedAt: time.Date(2023, 1, 10, 12, 0, 0, 0, time.UTC),
 	}
+}
+
+func tokenFor(t *testing.T, secret string, u user.User) string {
+	t.Helper()
+	raw, _, err := auth.NewManager(secret, 15*time.Minute).Issue(u)
+	require.NoError(t, err)
+	return raw
 }
 
 func perform(handler http.Handler, method, path, body, authorization string) *httptest.ResponseRecorder {

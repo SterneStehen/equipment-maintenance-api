@@ -1,6 +1,6 @@
 # Equipment Maintenance API
 
-Equipment Maintenance API is a Go service for managing industrial equipment and its maintenance lifecycle. The current application provides user registration, JWT authentication, a health endpoint, PostgreSQL persistence through `pgxpool`, and graceful shutdown. Later phases add equipment and work-order workflows.
+Equipment Maintenance API is a Go service for managing industrial equipment and its maintenance lifecycle. The current application provides user registration, JWT authentication, administrator role management, a health endpoint, PostgreSQL persistence through `pgxpool`, and graceful shutdown. Later phases add equipment and work-order workflows.
 
 ## Requirements
 
@@ -91,6 +91,21 @@ Authentication errors use the same JSON envelope as other API errors:
 {"error":{"code":"invalid_credentials","message":"Email or password is incorrect"}}
 ```
 
+Administrators can list users, fetch a user by id, and change another user's role. Tokens from non-admin users are rejected with HTTP 403 at the route layer, and the user service checks the current database role again before doing the work. The last administrator cannot be demoted.
+
+```sh
+curl http://localhost:8080/api/v1/admin/users \
+  -H 'Authorization: Bearer <admin_access_token>'
+
+curl http://localhost:8080/api/v1/admin/users/2 \
+  -H 'Authorization: Bearer <admin_access_token>'
+
+curl -X PATCH http://localhost:8080/api/v1/admin/users/2/role \
+  -H 'Authorization: Bearer <admin_access_token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"role":"dispatcher"}'
+```
+
 ## Development commands
 
 ```sh
@@ -108,4 +123,4 @@ make check     # run all verification commands
 
 The repository uses a domain-oriented layout. `cmd/api` is the executable composition root and `cmd/migrate` is the migration runner. Packages under `internal` separate configuration, database, and HTTP infrastructure from the `user`, `equipment`, `workorder`, and `maintenance` domains. Handlers own HTTP concerns, services will own business rules, and repositories will own parameterized SQL.
 
-The implemented HTTP surface is `GET /health`, `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, and authenticated `GET /api/v1/users/me`. Equipment and work-order endpoints are added in subsequent phases.
+The implemented HTTP surface is `GET /health`, `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, authenticated `GET /api/v1/users/me`, and administrator-only `GET /api/v1/admin/users`, `GET /api/v1/admin/users/{id}`, and `PATCH /api/v1/admin/users/{id}/role`. Equipment and work-order endpoints are added in subsequent phases.

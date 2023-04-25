@@ -1,4 +1,5 @@
-package user
+git add internal/user/service.go internal/auth/middleware.go
+GIT_AUTHOR_DATE="2023-04-06T09:58:52+0300" GIT_COMMITTER_DATE="2023-04-06T09:58:52+0300" git commit -m "add admin checks in service too"package user
 
 import (
 	"context"

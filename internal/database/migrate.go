@@ -17,7 +17,7 @@ func NewMigrator(databaseURL, migrationsPath string) (*migrate.Migrate, error) {
 		return nil, fmt.Errorf("resolve migrations path: %w", err)
 	}
 
-	// Tests don't always start in the repo root, so use the full path here
+	// Tests start from odd places sometimes, so make this path boringly explicit
 	filesURL := (&url.URL{Scheme: "file", Path: filepath.ToSlash(absPath)}).String()
 	dbURL, err := url.Parse(databaseURL)
 	if err != nil {

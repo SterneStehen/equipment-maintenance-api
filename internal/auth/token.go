@@ -57,7 +57,7 @@ func (m *Manager) Issue(u user.User) (string, time.Time, error) {
 
 func (m *Manager) Verify(raw string) (Principal, error) {
 	c := &tokenClaims{}
-	// We only issue HS256 tokens, so there is no reason to be flexible here
+	// We only make HS256 tokens, so accepting anything else would just invite trouble
 	p := jwt.NewParser(jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 	tok, err := p.ParseWithClaims(raw, c, func(t *jwt.Token) (interface{}, error) {
 		if t.Method != jwt.SigningMethodHS256 {

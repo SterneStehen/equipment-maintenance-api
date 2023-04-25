@@ -37,7 +37,7 @@ func Load() (Config, error) {
 		issues = append(issues, "DATABASE_URL "+err.Error())
 	}
 
-	// Keep this exactly as it came in; trimming a secret changes it
+	// Keep this raw, trimming secrets has bitten enough people already
 	cfg.JWTSecret = os.Getenv("JWT_SECRET")
 	if strings.TrimSpace(cfg.JWTSecret) == "" {
 		issues = append(issues, "JWT_SECRET is required")

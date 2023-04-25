@@ -57,7 +57,7 @@ func run(args []string, logger *log.Logger) (runErr error) {
 		}
 		err = migrator.Up()
 	case "down":
-		// A bare "down" is far too easy to run against the wrong database, so make people type a count
+		// A plain "down" is too easy to fat-finger, make the count explicit
 		steps, parseErr := downSteps(rest)
 		if parseErr != nil {
 			return parseErr

@@ -35,7 +35,7 @@ func New(address string, handler http.Handler) *Server {
 }
 
 func (s *Server) Run(ctx context.Context) error {
-	// Bind now so a busy port fails before anything else starts
+	// Bind early so a busy port fails before the app pretends it started
 	ln, err := net.Listen("tcp", s.httpServer.Addr)
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", s.httpServer.Addr, err)
@@ -55,7 +55,7 @@ func (s *Server) Run(ctx context.Context) error {
 	case <-ctx.Done():
 	}
 
-	// Give active requests a moment to get out
+	// Let in-flight requests finish if they are not taking forever
 	stopCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 

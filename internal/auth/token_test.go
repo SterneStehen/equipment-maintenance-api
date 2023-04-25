@@ -1,4 +1,3 @@
-git commit --date="2023-03-19T17:08:59+0300" -m "update jwt dependencies and clean old doc files"
 package auth
 
 import (

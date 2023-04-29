@@ -4,14 +4,16 @@ import (
 	"net/http"
 
 	"github.com/SterneStehen/equipment-maintenance-api/internal/auth"
+	"github.com/SterneStehen/equipment-maintenance-api/internal/equipment"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/health"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/user"
 	"github.com/gin-gonic/gin"
 )
 
 type Dependencies struct {
-	Auth   *auth.Handler
-	Tokens *auth.Manager
+	Auth      *auth.Handler
+	Equipment *equipment.Handler
+	Tokens    *auth.Manager
 }
 
 func NewRouter(deps Dependencies) http.Handler {
@@ -31,6 +33,18 @@ func NewRouter(deps Dependencies) http.Handler {
 		admins.GET("/admin/users", deps.Auth.ListUsers)
 		admins.GET("/admin/users/:id", deps.Auth.GetUser)
 		admins.PATCH("/admin/users/:id/role", deps.Auth.UpdateUserRole)
+
+		if deps.Equipment != nil {
+			protected.GET("/equipment", deps.Equipment.List)
+			protected.GET("/equipment/:id", deps.Equipment.Get)
+			protected.DELETE("/equipment/:id", deps.Equipment.Delete)
+
+			eqWrite := protected.Group("", auth.RequireRole(user.RoleAdmin, user.RoleDispatcher))
+			eqWrite.POST("/equipment", deps.Equipment.Create)
+			eqWrite.PATCH("/equipment/:id", deps.Equipment.Update)
+
+			admins.POST("/equipment/:id/decommission", deps.Equipment.Decommission)
+		}
 	}
 	return router
 }

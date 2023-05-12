@@ -15,6 +15,7 @@ import (
 	"github.com/SterneStehen/equipment-maintenance-api/internal/equipment"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/server"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/user"
+	"github.com/SterneStehen/equipment-maintenance-api/internal/workorder"
 )
 
 func main() {
@@ -52,7 +53,11 @@ func run(logger *log.Logger) error {
 	authHandler := auth.NewHandler(users, tokens)
 	equipmentSvc := equipment.NewService(equipment.NewRepository(pool))
 	equipmentHandler := equipment.NewHandler(equipmentSvc)
-	router := server.NewRouter(server.Dependencies{Auth: authHandler, Equipment: equipmentHandler, Tokens: tokens})
+	workOrders := workorder.NewService(workorder.NewRepository(pool))
+	workOrderHandler := workorder.NewHandler(workOrders)
+	router := server.NewRouter(server.Dependencies{
+		Auth: authHandler, Equipment: equipmentHandler, Tokens: tokens, WorkOrder: workOrderHandler,
+	})
 
 	httpServer := server.New(cfg.HTTPAddress, router)
 	logger.Printf("listening on %s", cfg.HTTPAddress)

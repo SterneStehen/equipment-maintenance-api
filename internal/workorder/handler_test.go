@@ -115,7 +115,9 @@ func TestWorkOrderUpdateAndErrors(t *testing.T) {
 
 type authStub struct{}
 
-func (authStub) Register(context.Context, user.RegisterInput) (user.User, error) { return user.User{}, nil }
+func (authStub) Register(context.Context, user.RegisterInput) (user.User, error) {
+	return user.User{}, nil
+}
 func (authStub) Authenticate(context.Context, string, string) (user.User, error) {
 	return user.User{}, nil
 }

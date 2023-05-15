@@ -50,20 +50,22 @@ func TestPostgreSQLPoolAndMigrationLifecycle(t *testing.T) {
 	if err := migrator.Up(); err != nil {
 		t.Fatalf("apply migrations: %v", err)
 	}
-	assertMigrationVersion(t, migrator, 2)
+	assertMigrationVersion(t, migrator, 3)
 	assertUsersConstraints(t, ctx, pool)
 	assertEquipmentConstraints(t, ctx, pool)
+	assertWorkOrderConstraints(t, ctx, pool)
 
 	if err := migrator.Down(); err != nil {
 		t.Fatalf("roll back migrations: %v", err)
 	}
 	assertUsersTableMissing(t, ctx, pool)
 	assertEquipmentTableMissing(t, ctx, pool)
+	assertWorkOrdersTableMissing(t, ctx, pool)
 
 	if err := migrator.Up(); err != nil {
 		t.Fatalf("reapply migrations: %v", err)
 	}
-	assertMigrationVersion(t, migrator, 2)
+	assertMigrationVersion(t, migrator, 3)
 }
 
 func openTestMigrator(t *testing.T, databaseURL string) *migrate.Migrate {
@@ -184,6 +186,44 @@ func assertEquipmentConstraints(t *testing.T, ctx context.Context, pool *pgxpool
 	}
 }
 
+func assertWorkOrderConstraints(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	var cols int
+	if err := pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM information_schema.columns
+		WHERE table_schema = 'public'
+		  AND table_name = 'work_orders'
+		  AND column_name IN ('id', 'equipment_id', 'title', 'description', 'status', 'priority', 'assigned_to', 'created_by', 'created_at', 'updated_at', 'completed_at')
+	`).Scan(&cols); err != nil {
+		t.Fatalf("inspect work_orders columns: %v", err)
+	}
+	if cols != 11 {
+		t.Fatalf("work_orders expected column count = %d, want 11", cols)
+	}
+
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO work_orders (equipment_id, title, status, priority, created_by)
+		VALUES (1, 'Fix pump', 'open', 'high', 1)
+	`); err != nil {
+		t.Fatalf("insert valid work order: %v", err)
+	}
+
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO work_orders (equipment_id, title, status, priority, created_by)
+		VALUES (1, '', 'open', 'high', 1)
+	`); err == nil {
+		t.Fatal("blank work order title was accepted")
+	}
+
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO work_orders (equipment_id, title, status, priority, created_by)
+		VALUES (1, 'Bad status', 'waiting', 'high', 1)
+	`); err == nil {
+		t.Fatal("invalid work order status was accepted")
+	}
+}
+
 func assertUsersTableMissing(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	t.Helper()
 	var tableName *string
@@ -203,5 +243,16 @@ func assertEquipmentTableMissing(t *testing.T, ctx context.Context, pool *pgxpoo
 	}
 	if tableName != nil {
 		t.Fatalf("equipment table still exists after rollback: %s", *tableName)
+	}
+}
+
+func assertWorkOrdersTableMissing(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	var tableName *string
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.work_orders')::text").Scan(&tableName); err != nil {
+		t.Fatalf("check work_orders table after rollback: %v", err)
+	}
+	if tableName != nil {
+		t.Fatalf("work_orders table still exists after rollback: %s", *tableName)
 	}
 }

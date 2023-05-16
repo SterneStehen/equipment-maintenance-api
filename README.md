@@ -1,6 +1,6 @@
 # Equipment Maintenance API
 
-Equipment Maintenance API is a Go service for managing industrial equipment and its maintenance lifecycle. The current application provides user registration, JWT authentication, administrator role management, equipment CRUD-style workflows, a health endpoint, PostgreSQL persistence through `pgxpool`, and graceful shutdown. Later phases add work-order workflows.
+Equipment Maintenance API is a Go service for managing industrial equipment and its maintenance lifecycle. The current application provides user registration, JWT authentication, administrator role management, equipment CRUD-style workflows, work-order creation/querying, a health endpoint, PostgreSQL persistence through `pgxpool`, and graceful shutdown.
 
 ## Requirements
 
@@ -64,7 +64,7 @@ make db-clean       # stop PostgreSQL and remove local database data
 
 Migration files live in `migrations/` as matching, sequentially numbered `.up.sql` and `.down.sql` files. Migrations are explicit SQL and each multi-statement migration is transaction-wrapped. Apply migrations explicitly before starting a newly deployed application version; the API does not mutate its schema automatically.
 
-The first migration creates `users` with normalized unique email, role and non-empty value constraints, timezone-aware timestamps, and a role index. The second migration creates `equipment` with normalized unique serial numbers, status constraints, timestamps, and decommission tracking. Rollback drops the matching table for each migration.
+The first migration creates `users` with normalized unique email, role and non-empty value constraints, timezone-aware timestamps, and a role index. The second migration creates `equipment` with normalized unique serial numbers, status constraints, timestamps, and decommission tracking. The third migration creates `work_orders` with equipment/user references, status and priority constraints, assignee tracking, and completion timestamps. Rollback drops the matching table for each migration.
 
 ## Users and authentication
 
@@ -130,6 +130,27 @@ curl -X POST http://localhost:8080/api/v1/equipment/1/decommission \
   -H 'Authorization: Bearer <admin_access_token>'
 ```
 
+## Work orders
+
+Authenticated users can list and read work orders. Administrators and dispatchers can create and update them. A work order cannot be opened or updated for decommissioned equipment. `assigned_to` is optional, but when supplied it must point to an existing user with the `technician` role.
+
+Supported filters are `status`, `priority`, `equipment_id`, `assigned_to`, `q`, `limit`, and `offset`.
+
+```sh
+curl -X POST http://localhost:8080/api/v1/work-orders \
+  -H 'Authorization: Bearer <admin_or_dispatcher_token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"equipment_id":1,"title":"Replace belt","priority":"high","assigned_to":3}'
+
+curl 'http://localhost:8080/api/v1/work-orders?status=open&priority=high&equipment_id=1&limit=20&offset=0' \
+  -H 'Authorization: Bearer <access_token>'
+
+curl -X PATCH http://localhost:8080/api/v1/work-orders/1 \
+  -H 'Authorization: Bearer <admin_or_dispatcher_token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Replace belt","status":"completed","priority":"urgent","assigned_to":3}'
+```
+
 ## Development commands
 
 ```sh
@@ -147,4 +168,4 @@ make check     # run all verification commands
 
 The repository uses a domain-oriented layout. `cmd/api` is the executable composition root and `cmd/migrate` is the migration runner. Packages under `internal` separate configuration, database, and HTTP infrastructure from the `user`, `equipment`, `workorder`, and `maintenance` domains. Handlers own HTTP concerns, services will own business rules, and repositories will own parameterized SQL.
 
-The implemented HTTP surface is `GET /health`, auth/user endpoints, administrator role endpoints, and authenticated equipment endpoints under `/api/v1/equipment`. Work-order endpoints are added in subsequent phases.
+The implemented HTTP surface is `GET /health`, auth/user endpoints, administrator role endpoints, authenticated equipment endpoints under `/api/v1/equipment`, and authenticated work-order endpoints under `/api/v1/work-orders`.

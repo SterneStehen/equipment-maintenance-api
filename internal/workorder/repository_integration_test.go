@@ -14,6 +14,7 @@ import (
 	"github.com/SterneStehen/equipment-maintenance-api/internal/equipment"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/user"
 	"github.com/golang-migrate/migrate/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -89,9 +90,7 @@ func TestWorkOrderRepositoryFlow(t *testing.T) {
 	require.Len(t, page, 1)
 }
 
-func seedWOUsers(t *testing.T, ctx context.Context, pool interface {
-	QueryRow(context.Context, string, ...interface{}) interface{ Scan(...interface{}) error }
-}) (int64, int64, int64, int64) {
+func seedWOUsers(t *testing.T, ctx context.Context, pool *pgxpool.Pool) (int64, int64, int64, int64) {
 	t.Helper()
 	var admin, dispatcher, tech, viewer int64
 	require.NoError(t, pool.QueryRow(ctx, `

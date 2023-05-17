@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/SterneStehen/equipment-maintenance-api/internal/equipment"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/user"
@@ -161,8 +160,4 @@ func scanWO(row rowish) (WorkOrder, error) {
 	var x WorkOrder
 	err := row.Scan(&x.ID, &x.EquipmentID, &x.Title, &x.Description, &x.Status, &x.Priority, &x.AssignedTo, &x.CreatedBy, &x.CreatedAt, &x.UpdatedAt, &x.CompletedAt)
 	return x, err
-}
-
-func likeQ(raw string) string {
-	return strings.TrimSpace(raw)
 }

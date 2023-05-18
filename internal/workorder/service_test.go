@@ -107,3 +107,16 @@ func TestListFilterDefaults(t *testing.T) {
 	assert.Equal(t, 0, got.Offset)
 	assert.Equal(t, "pump", got.Query)
 }
+
+func TestListRejectsBadFilters(t *testing.T) {
+	svc := NewService(fakeStore{})
+
+	_, err := svc.List(context.Background(), user.Actor{Role: user.RoleViewer}, ListFilter{Status: Status("later")})
+	require.ErrorIs(t, err, ErrInvalidStatus)
+
+	_, err = svc.List(context.Background(), user.Actor{Role: user.RoleViewer}, ListFilter{Priority: Priority("mega")})
+	require.ErrorIs(t, err, ErrInvalidPriority)
+
+	_, err = svc.List(context.Background(), user.Actor{Role: user.RoleViewer}, ListFilter{EquipmentID: -3})
+	require.ErrorIs(t, err, ErrInvalidEquipment)
+}

@@ -113,6 +113,20 @@ func TestWorkOrderUpdateAndErrors(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, missingAuth.Code)
 }
 
+func TestWorkOrderAssigneeError(t *testing.T) {
+	api := fakeWO{
+		createFn: func(context.Context, user.Actor, workorder.CreateInput) (workorder.WorkOrder, error) {
+			return workorder.WorkOrder{}, workorder.ErrAssigneeNotTechnician
+		},
+	}
+	router, secret := woRouter(api)
+	dispatcherTok := token(t, secret, user.RoleDispatcher)
+
+	res := hit(router, http.MethodPost, "/api/v1/work-orders", `{"equipment_id":2,"title":"Fix","assigned_to":4}`, "Bearer "+dispatcherTok)
+	assert.Equal(t, http.StatusBadRequest, res.Code)
+	assert.Contains(t, res.Body.String(), `"code":"invalid_assignee"`)
+}
+
 type authStub struct{}
 
 func (authStub) Register(context.Context, user.RegisterInput) (user.User, error) {

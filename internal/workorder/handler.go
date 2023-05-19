@@ -43,7 +43,7 @@ func NewHandler(svc svc) *Handler {
 	return &Handler{svc: svc}
 }
 
-func (h *Handler) Create(c *gin.Context) {
+func (h *Handler)                     Create(c *gin.Context) {
 	who, ok := actor(c)
 	if !ok {
 		return
@@ -72,6 +72,12 @@ func (h *Handler) Get(c *gin.Context) {
 	if !ok {
 		return
 	}
+
+
+
+
+
+
 	id, ok := idFromPath(c)
 	if !ok {
 		return
@@ -93,7 +99,7 @@ func (h *Handler) List(c *gin.Context) {
 	if !ok {
 		return
 	}
-	arr, err := h.svc.List(c.Request.Context(), who, flt)
+	arr,       err := h.svc.List(c.Request.Context(), who, flt)
 	if err != nil {
 		writeErr(c, err)
 		return
@@ -122,6 +128,19 @@ func (h *Handler) Update(c *gin.Context) {
 		Priority:    req.Priority,
 		AssignedTo:  req.AssignedTo,
 	})
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
 	if err != nil {
 		writeErr(c, err)
 		return
@@ -174,6 +193,33 @@ func filterFromQuery(c *gin.Context) (ListFilter, bool) {
 		Offset:      offset,
 	}, true
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 func intQuery(c *gin.Context, key string, def int) (int, bool) {
 	raw := c.Query(key)

@@ -21,6 +21,10 @@ import (
 
 func TestWorkOrderRepositoryFlow(t *testing.T) {
 	dbURL := os.Getenv("TEST_DATABASE_URL")
+
+
+
+	
 	if dbURL == "" {
 		t.Skip("TEST_DATABASE_URL is not set")
 	}
@@ -48,6 +52,11 @@ func TestWorkOrderRepositoryFlow(t *testing.T) {
 	pump, err := equipment.NewService(eqRepo).Create(ctx, user.Actor{Role: user.RoleDispatcher}, equipment.CreateInput{
 		SerialNumber: "pump-wo-1", Name: "Pump WO",
 	})
+
+
+
+
+
 	require.NoError(t, err)
 	dead, err := equipment.NewService(eqRepo).Create(ctx, user.Actor{Role: user.RoleAdmin}, equipment.CreateInput{
 		SerialNumber: "pump-dead-1", Name: "Old Pump",
@@ -90,28 +99,28 @@ func TestWorkOrderRepositoryFlow(t *testing.T) {
 	require.Len(t, page, 1)
 }
 
-func seedWOUsers(t *testing.T, ctx context.Context, pool *pgxpool.Pool) (int64, int64, int64, int64) {
-	t.Helper()
-	var admin, dispatcher, tech, viewer int64
-	require.NoError(t, pool.QueryRow(ctx, `
-		INSERT INTO users (email, password_hash, full_name, role)
-		VALUES ('wo-admin@example.com', 'hash', 'Admin', 'admin')
-		RETURNING id
-	`).Scan(&admin))
-	require.NoError(t, pool.QueryRow(ctx, `
-		INSERT INTO users (email, password_hash, full_name, role)
-		VALUES ('wo-dispatcher@example.com', 'hash', 'Dispatcher', 'dispatcher')
-		RETURNING id
-	`).Scan(&dispatcher))
-	require.NoError(t, pool.QueryRow(ctx, `
-		INSERT INTO users (email, password_hash, full_name, role)
-		VALUES ('wo-tech@example.com', 'hash', 'Technician', 'technician')
-		RETURNING id
-	`).Scan(&tech))
-	require.NoError(t, pool.QueryRow(ctx, `
-		INSERT INTO users (email, password_hash, full_name, role)
-		VALUES ('wo-viewer@example.com', 'hash', 'Viewer', 'viewer')
-		RETURNING id
-	`).Scan(&viewer))
-	return admin, dispatcher, tech, viewer
-}
+	func seedWOUsers(t *testing.T, ctx context.Context, pool *pgxpool.Pool) (int64, int64, int64, int64) {
+		t.Helper()
+		var admin, dispatcher, tech, viewer int64
+		require.NoError(t, pool.QueryRow(ctx, `
+			INSERT INTO users (email, password_hash, full_name, role)
+			VALUES ('wo-admin@example.com', 'hash', 'Admin', 'admin')
+			RETURNING id
+		`).Scan(&admin))
+		require.NoError(t, pool.QueryRow(ctx, `
+			INSERT INTO users (email, password_hash, full_name, role)
+			VALUES ('wo-dispatcher@example.com', 'hash', 'Dispatcher', 'dispatcher')
+			RETURNING id
+		`).Scan(&dispatcher))
+		require.NoError(t, pool.QueryRow(ctx, `
+			INSERT INTO users (email, password_hash, full_name, role)
+			VALUES ('wo-tech@example.com', 'hash', 'Technician', 'technician')
+			RETURNING id
+		`).Scan(&tech))
+		require.NoError(t, pool.QueryRow(ctx, `
+			INSERT INTO users (email, password_hash, full_name, role)
+			VALUES ('wo-viewer@example.com', 'hash', 'Viewer', 'viewer')
+			RETURNING id
+		`).Scan(&viewer))
+		return admin, dispatcher, tech, viewer
+	}

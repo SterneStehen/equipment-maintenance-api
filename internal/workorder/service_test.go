@@ -1,24 +1,24 @@
 package workorder
 
-import (
-	"context"
-	"testing"
+	import (
+		"context"
+		"testing"
 
-	"github.com/SterneStehen/equipment-maintenance-api/internal/user"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-)
+		"github.com/SterneStehen/equipment-maintenance-api/internal/user"
+		"github.com/stretchr/testify/assert"
+		"github.com/stretchr/testify/require"
+	)
 
-type fakeStore struct {
-	createFn func(context.Context, CreateInput) (WorkOrder, error)
-	byIDFn   func(context.Context, int64) (WorkOrder, error)
-	listFn   func(context.Context, ListFilter) ([]WorkOrder, error)
-	updateFn func(context.Context, int64, UpdateInput) (WorkOrder, error)
-}
+	type fakeStore struct {
+		createFn func(context.Context, CreateInput) (WorkOrder, error)
+		byIDFn   func(context.Context, int64) (WorkOrder, error)
+		listFn   func(context.Context, ListFilter) ([]WorkOrder, error)
+		updateFn func(context.Context, int64, UpdateInput) (WorkOrder, error)
+	}
 
-func (f fakeStore) Create(ctx context.Context, in CreateInput) (WorkOrder, error) {
-	return f.createFn(ctx, in)
-}
+	func (f fakeStore) Create(ctx context.Context, in CreateInput) (WorkOrder, error) {
+		return f.createFn(ctx, in)
+	        }
 
 func (f fakeStore) ByID(ctx context.Context, id int64) (WorkOrder, error) {
 	return f.byIDFn(ctx, id)
@@ -51,6 +51,10 @@ func TestCreateCleansInputAndSetsCreator(t *testing.T) {
 	assert.Equal(t, int64(3), got.CreatedBy)
 	assert.Equal(t, &techID, wo.AssignedTo)
 }
+
+
+
+
 
 func TestWorkOrderValidation(t *testing.T) {
 	svc := NewService(fakeStore{})

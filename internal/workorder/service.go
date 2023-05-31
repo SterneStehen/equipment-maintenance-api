@@ -116,14 +116,6 @@ func cleanCreate(in CreateInput) (CreateInput, error) {
 	}, nil
 }
 
-
-
-
-
-
-
-
-
 func cleanUpdate(in UpdateInput) (UpdateInput, error) {
 	title := strings.TrimSpace(in.Title)
 	if title == "" || len(title) > 220 {
@@ -137,9 +129,9 @@ func cleanUpdate(in UpdateInput) (UpdateInput, error) {
 		return UpdateInput{}, ErrInvalidStatus
 	}
 	pr := in.Priority
-		if pr == "" {
-			pr = PriorityMedium
-		}
+	if pr == "" {
+		pr = PriorityMedium
+	}
 	if !pr.Valid() {
 		return UpdateInput{}, ErrInvalidPriority
 	}
@@ -156,14 +148,14 @@ func cleanFilter(f ListFilter) (ListFilter, error) {
 	if f.Status != "" && !f.Status.Valid() {
 		return ListFilter{}, ErrInvalidStatus
 	}
-		if f.Priority != "" && !f.Priority.Valid() {
-			return ListFilter{}, ErrInvalidPriority
-		}
-		if f.EquipmentID < 0 || f.AssignedTo < 0 {
-			return ListFilter{}, ErrInvalidEquipment
-		}
-		if f.Limit <= 0 {
-			f.Limit = defaultLimit
+	if f.Priority != "" && !f.Priority.Valid() {
+		return ListFilter{}, ErrInvalidPriority
+	}
+	if f.EquipmentID < 0 || f.AssignedTo < 0 {
+		return ListFilter{}, ErrInvalidEquipment
+	}
+	if f.Limit <= 0 {
+		f.Limit = defaultLimit
 	}
 	if f.Limit > maxLimit {
 		f.Limit = maxLimit
@@ -186,9 +178,6 @@ func trimTo(raw string, n int) string {
 func canRead(role user.Role) bool {
 	return role == user.RoleAdmin || role == user.RoleDispatcher || role == user.RoleTechnician || role == user.RoleViewer
 }
-
-
-
 
 func canWrite(role user.Role) bool {
 	return role == user.RoleAdmin || role == user.RoleDispatcher

@@ -11,11 +11,25 @@ const (
 	StatusOpen       Status = "open"
 	StatusInProgress Status = "in_progress"
 	StatusCompleted  Status = "completed"
+	StatusClosed     Status = "closed"
 	StatusCanceled   Status = "canceled"
 )
 
 func (s Status) Valid() bool {
-	return s == StatusOpen || s == StatusInProgress || s == StatusCompleted || s == StatusCanceled
+	return s == StatusOpen || s == StatusInProgress || s == StatusCompleted || s == StatusClosed || s == StatusCanceled
+}
+
+func (s Status) Terminal() bool {
+	return s == StatusClosed || s == StatusCanceled
+}
+
+func CanTransition(from, to Status) bool {
+	for _, st := range allowedNext[from] {
+		if st == to {
+			return true
+		}
+	}
+	return false
 }
 
 type Priority string
@@ -45,6 +59,16 @@ type WorkOrder struct {
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 }
 
+type HistoryEntry struct {
+	ID          int64     `json:"id"`
+	WorkOrderID int64     `json:"work_order_id"`
+	FromStatus  Status    `json:"from_status"`
+	ToStatus    Status    `json:"to_status"`
+	ActorID     int64     `json:"actor_id"`
+	Note        string    `json:"note"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 type ListFilter struct {
 	Status      Status
 	Priority    Priority
@@ -66,4 +90,13 @@ var (
 	ErrAssigneeNotFound        = errors.New("assignee not found")
 	ErrAssigneeNotTechnician   = errors.New("assignee is not a technician")
 	ErrPermissionDenied        = errors.New("permission denied")
+	ErrInvalidTransition       = errors.New("invalid work order transition")
+	ErrTerminalState           = errors.New("work order is in terminal state")
+	ErrTechnicianOwnership     = errors.New("technician does not own this work order")
 )
+
+var allowedNext = map[Status][]Status{
+	StatusOpen:       {StatusInProgress, StatusCanceled},
+	StatusInProgress: {StatusCompleted, StatusCanceled},
+	StatusCompleted:  {StatusClosed},
+}

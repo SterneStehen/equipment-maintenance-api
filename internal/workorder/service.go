@@ -17,6 +17,7 @@ type store interface {
 	ByID(ctx context.Context, id int64) (WorkOrder, error)
 	List(ctx context.Context, f ListFilter) ([]WorkOrder, error)
 	Update(ctx context.Context, id int64, in UpdateInput) (WorkOrder, error)
+	Transition(ctx context.Context, id int64, in TransitionInput) (WorkOrder, error)
 }
 
 type Service struct {
@@ -38,6 +39,13 @@ type UpdateInput struct {
 	Status      Status
 	Priority    Priority
 	AssignedTo  *int64
+}
+
+type TransitionInput struct {
+	ActorID   int64
+	ActorRole user.Role
+	ToStatus  Status
+	Note      string
 }
 
 func NewService(repo store) *Service {

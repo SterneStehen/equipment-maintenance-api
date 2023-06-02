@@ -91,12 +91,16 @@ func (r *Repository) Update(ctx context.Context, id int64, in UpdateInput) (Work
 	}
 
 	var eqID int64
-	err := r.pool.QueryRow(ctx, "SELECT equipment_id FROM work_orders WHERE id = $1", id).Scan(&eqID)
+	var st Status
+	err := r.pool.QueryRow(ctx, "SELECT equipment_id, status FROM work_orders WHERE id = $1", id).Scan(&eqID, &st)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return WorkOrder{}, ErrNotFound
 	}
 	if err != nil {
 		return WorkOrder{}, fmt.Errorf("read work order equipment: %w", err)
+	}
+	if st.Terminal() {
+		return WorkOrder{}, ErrTerminalState
 	}
 	if err := r.checkEquipment(ctx, eqID); err != nil {
 		return WorkOrder{}, err
@@ -104,12 +108,11 @@ func (r *Repository) Update(ctx context.Context, id int64, in UpdateInput) (Work
 
 	wo, err := scanWO(r.pool.QueryRow(ctx, `
 		UPDATE work_orders
-		SET title = $2, description = $3, status = $4, priority = $5, assigned_to = $6,
-		    updated_at = NOW(),
-		    completed_at = CASE WHEN $4 = 'completed' THEN COALESCE(completed_at, NOW()) ELSE NULL END
+		SET title = $2, description = $3, priority = $4, assigned_to = $5,
+		    updated_at = NOW()
 		WHERE id = $1
 		RETURNING id, equipment_id, title, description, status, priority, assigned_to, created_by, created_at, updated_at, completed_at
-	`, id, in.Title, in.Description, in.Status, in.Priority, in.AssignedTo))
+	`, id, in.Title, in.Description, in.Priority, in.AssignedTo))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return WorkOrder{}, ErrNotFound
 	}
@@ -117,6 +120,74 @@ func (r *Repository) Update(ctx context.Context, id int64, in UpdateInput) (Work
 		return WorkOrder{}, fmt.Errorf("update work order: %w", err)
 	}
 	return wo, nil
+}
+
+func (r *Repository) Transition(ctx context.Context, id int64, in TransitionInput) (WorkOrder, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return WorkOrder{}, fmt.Errorf("begin work order transition: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	current, err := scanWO(tx.QueryRow(ctx, `
+		SELECT id, equipment_id, title, description, status, priority, assigned_to, created_by, created_at, updated_at, completed_at
+		FROM work_orders
+		WHERE id = $1
+		FOR UPDATE
+	`, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return WorkOrder{}, ErrNotFound
+	}
+	if err != nil {
+		return WorkOrder{}, fmt.Errorf("lock work order: %w", err)
+	}
+	if current.Status.Terminal() {
+		return WorkOrder{}, ErrTerminalState
+	}
+	if !CanTransition(current.Status, in.ToStatus) {
+		return WorkOrder{}, ErrInvalidTransition
+	}
+	if err := transitionPerm(current, in); err != nil {
+		return WorkOrder{}, err
+	}
+
+	next, err := scanWO(tx.QueryRow(ctx, `
+		UPDATE work_orders
+		SET status = $2,
+		    updated_at = NOW(),
+		    completed_at = CASE WHEN $2 = 'completed' THEN COALESCE(completed_at, NOW()) ELSE NULL END
+		WHERE id = $1
+		RETURNING id, equipment_id, title, description, status, priority, assigned_to, created_by, created_at, updated_at, completed_at
+	`, id, in.ToStatus))
+	if err != nil {
+		return WorkOrder{}, fmt.Errorf("update work order transition: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO work_order_history (work_order_id, from_status, to_status, actor_id, note)
+		VALUES ($1, $2, $3, $4, $5)
+	`, id, current.Status, in.ToStatus, in.ActorID, strings.TrimSpace(in.Note)); err != nil {
+		return WorkOrder{}, fmt.Errorf("insert work order history: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return WorkOrder{}, fmt.Errorf("commit work order transition: %w", err)
+	}
+	return next, nil
+}
+
+func transitionPerm(wo WorkOrder, in TransitionInput) error {
+	if in.ActorRole == user.RoleAdmin || in.ActorRole == user.RoleDispatcher {
+		return nil
+	}
+	if in.ActorRole != user.RoleTechnician {
+		return ErrPermissionDenied
+	}
+	if in.ToStatus != StatusInProgress && in.ToStatus != StatusCompleted {
+		return ErrPermissionDenied
+	}
+	if wo.AssignedTo == nil || *wo.AssignedTo != in.ActorID {
+		return ErrTechnicianOwnership
+	}
+	return nil
 }
 
 func (r *Repository) checkEquipment(ctx context.Context, id int64) error {

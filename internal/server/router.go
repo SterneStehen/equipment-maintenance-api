@@ -54,6 +54,11 @@ func NewRouter(deps Dependencies) http.Handler {
 			woWrite := protected.Group("", auth.RequireRole(user.RoleAdmin, user.RoleDispatcher))
 			woWrite.POST("/work-orders", deps.WorkOrder.Create)
 			woWrite.PATCH("/work-orders/:id", deps.WorkOrder.Update)
+
+			protected.POST("/work-orders/:id/start", deps.WorkOrder.Start)
+			protected.POST("/work-orders/:id/complete", deps.WorkOrder.Complete)
+			protected.POST("/work-orders/:id/close", deps.WorkOrder.Close)
+			protected.POST("/work-orders/:id/cancel", deps.WorkOrder.Cancel)
 		}
 	}
 	return router

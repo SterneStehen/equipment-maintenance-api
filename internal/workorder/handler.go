@@ -17,6 +17,10 @@ type svc interface {
 	ByID(ctx context.Context, actor user.Actor, id int64) (WorkOrder, error)
 	List(ctx context.Context, actor user.Actor, f ListFilter) ([]WorkOrder, error)
 	Update(ctx context.Context, actor user.Actor, id int64, in UpdateInput) (WorkOrder, error)
+	Start(ctx context.Context, actor user.Actor, id int64, note string) (WorkOrder, error)
+	Complete(ctx context.Context, actor user.Actor, id int64, note string) (WorkOrder, error)
+	Close(ctx context.Context, actor user.Actor, id int64, note string) (WorkOrder, error)
+	Cancel(ctx context.Context, actor user.Actor, id int64, note string) (WorkOrder, error)
 }
 
 type Handler struct {
@@ -37,6 +41,10 @@ type updateReq struct {
 	Status      Status   `json:"status"`
 	Priority    Priority `json:"priority"`
 	AssignedTo  *int64   `json:"assigned_to"`
+}
+
+type transitionReq struct {
+	Note string `json:"note"`
 }
 
 func NewHandler(svc svc) *Handler {
@@ -131,6 +139,46 @@ func (h *Handler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"work_order": wo})
 }
 
+func (h *Handler) Start(c *gin.Context) {
+	h.transition(c, h.svc.Start)
+}
+
+func (h *Handler) Complete(c *gin.Context) {
+	h.transition(c, h.svc.Complete)
+}
+
+func (h *Handler) Close(c *gin.Context) {
+	h.transition(c, h.svc.Close)
+}
+
+func (h *Handler) Cancel(c *gin.Context) {
+	h.transition(c, h.svc.Cancel)
+}
+
+func (h *Handler) transition(c *gin.Context, fn func(context.Context, user.Actor, int64, string) (WorkOrder, error)) {
+	who, ok := actor(c)
+	if !ok {
+		return
+	}
+	id, ok := idFromPath(c)
+	if !ok {
+		return
+	}
+	var req transitionReq
+	if c.Request.Body != nil && c.Request.ContentLength != 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			apperror.Write(c, http.StatusBadRequest, "invalid_request", "Transition note is invalid")
+			return
+		}
+	}
+	wo, err := fn(c.Request.Context(), who, id, req.Note)
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"work_order": wo})
+}
+
 func actor(c *gin.Context) (user.Actor, bool) {
 	p, ok := auth.Current(c)
 	if !ok {
@@ -210,6 +258,12 @@ func writeErr(c *gin.Context, err error) {
 		apperror.Write(c, http.StatusBadRequest, "invalid_assignee", "Assigned technician was not found")
 	case errors.Is(err, ErrAssigneeNotTechnician):
 		apperror.Write(c, http.StatusBadRequest, "invalid_assignee", "Assignee must be a technician")
+	case errors.Is(err, ErrInvalidTransition):
+		apperror.Write(c, http.StatusConflict, "invalid_transition", "Work order transition is not allowed")
+	case errors.Is(err, ErrTerminalState):
+		apperror.Write(c, http.StatusConflict, "terminal_state", "Work order is already closed or canceled")
+	case errors.Is(err, ErrTechnicianOwnership):
+		apperror.Write(c, http.StatusForbidden, "not_assigned", "Technician is not assigned to this work order")
 	case errors.Is(err, ErrNotFound):
 		apperror.Write(c, http.StatusNotFound, "not_found", "Work order was not found")
 	default:

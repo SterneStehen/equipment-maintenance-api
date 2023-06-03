@@ -99,6 +99,34 @@ func (s *Service) Update(ctx context.Context, actor user.Actor, id int64, in Upd
 	return s.repo.Update(ctx, id, x)
 }
 
+func (s *Service) Start(ctx context.Context, actor user.Actor, id int64, note string) (WorkOrder, error) {
+	return s.move(ctx, actor, id, StatusInProgress, note)
+}
+
+func (s *Service) Complete(ctx context.Context, actor user.Actor, id int64, note string) (WorkOrder, error) {
+	return s.move(ctx, actor, id, StatusCompleted, note)
+}
+
+func (s *Service) Close(ctx context.Context, actor user.Actor, id int64, note string) (WorkOrder, error) {
+	return s.move(ctx, actor, id, StatusClosed, note)
+}
+
+func (s *Service) Cancel(ctx context.Context, actor user.Actor, id int64, note string) (WorkOrder, error) {
+	return s.move(ctx, actor, id, StatusCanceled, note)
+}
+
+func (s *Service) move(ctx context.Context, actor user.Actor, id int64, to Status, note string) (WorkOrder, error) {
+	if !canRead(actor.Role) {
+		return WorkOrder{}, ErrPermissionDenied
+	}
+	if id < 1 {
+		return WorkOrder{}, ErrNotFound
+	}
+	return s.repo.Transition(ctx, id, TransitionInput{
+		ActorID: actor.UserID, ActorRole: actor.Role, ToStatus: to, Note: trimTo(note, 1000),
+	})
+}
+
 func cleanCreate(in CreateInput) (CreateInput, error) {
 	if in.EquipmentID < 1 {
 		return CreateInput{}, ErrInvalidEquipment
@@ -133,7 +161,7 @@ func cleanUpdate(in UpdateInput) (UpdateInput, error) {
 	if st == "" {
 		st = StatusOpen
 	}
-	if !st.Valid() {
+	if st != StatusOpen {
 		return UpdateInput{}, ErrInvalidStatus
 	}
 	pr := in.Priority

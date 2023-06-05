@@ -18,10 +18,14 @@ import (
 )
 
 type fakeWO struct {
-	createFn func(context.Context, user.Actor, workorder.CreateInput) (workorder.WorkOrder, error)
-	byIDFn   func(context.Context, user.Actor, int64) (workorder.WorkOrder, error)
-	listFn   func(context.Context, user.Actor, workorder.ListFilter) ([]workorder.WorkOrder, error)
-	updateFn func(context.Context, user.Actor, int64, workorder.UpdateInput) (workorder.WorkOrder, error)
+	createFn   func(context.Context, user.Actor, workorder.CreateInput) (workorder.WorkOrder, error)
+	byIDFn     func(context.Context, user.Actor, int64) (workorder.WorkOrder, error)
+	listFn     func(context.Context, user.Actor, workorder.ListFilter) ([]workorder.WorkOrder, error)
+	updateFn   func(context.Context, user.Actor, int64, workorder.UpdateInput) (workorder.WorkOrder, error)
+	startFn    func(context.Context, user.Actor, int64, string) (workorder.WorkOrder, error)
+	completeFn func(context.Context, user.Actor, int64, string) (workorder.WorkOrder, error)
+	closeFn    func(context.Context, user.Actor, int64, string) (workorder.WorkOrder, error)
+	cancelFn   func(context.Context, user.Actor, int64, string) (workorder.WorkOrder, error)
 }
 
 func (f fakeWO) Create(ctx context.Context, a user.Actor, in workorder.CreateInput) (workorder.WorkOrder, error) {
@@ -38,6 +42,22 @@ func (f fakeWO) List(ctx context.Context, a user.Actor, flt workorder.ListFilter
 
 func (f fakeWO) Update(ctx context.Context, a user.Actor, id int64, in workorder.UpdateInput) (workorder.WorkOrder, error) {
 	return f.updateFn(ctx, a, id, in)
+}
+
+func (f fakeWO) Start(ctx context.Context, a user.Actor, id int64, note string) (workorder.WorkOrder, error) {
+	return f.startFn(ctx, a, id, note)
+}
+
+func (f fakeWO) Complete(ctx context.Context, a user.Actor, id int64, note string) (workorder.WorkOrder, error) {
+	return f.completeFn(ctx, a, id, note)
+}
+
+func (f fakeWO) Close(ctx context.Context, a user.Actor, id int64, note string) (workorder.WorkOrder, error) {
+	return f.closeFn(ctx, a, id, note)
+}
+
+func (f fakeWO) Cancel(ctx context.Context, a user.Actor, id int64, note string) (workorder.WorkOrder, error) {
+	return f.cancelFn(ctx, a, id, note)
 }
 
 func TestWorkOrderCreateAndReadRoutes(t *testing.T) {
@@ -93,7 +113,7 @@ func TestWorkOrderUpdateAndErrors(t *testing.T) {
 			require.Equal(t, user.RoleAdmin, a.Role)
 			x := sampleWO()
 			x.ID = id
-			x.Status = in.Status
+			x.Priority = in.Priority
 			return x, nil
 		},
 	}
@@ -105,12 +125,55 @@ func TestWorkOrderUpdateAndErrors(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, retired.Code)
 	assert.Contains(t, retired.Body.String(), `"code":"equipment_decommissioned"`)
 
-	updated := hit(router, http.MethodPatch, "/api/v1/work-orders/9", `{"title":"Fix","status":"completed","priority":"urgent"}`, "Bearer "+adminTok)
+	updated := hit(router, http.MethodPatch, "/api/v1/work-orders/9", `{"title":"Fix","priority":"urgent"}`, "Bearer "+adminTok)
 	require.Equal(t, http.StatusOK, updated.Code)
-	assert.Contains(t, updated.Body.String(), `"status":"completed"`)
+	assert.Contains(t, updated.Body.String(), `"priority":"urgent"`)
 
 	missingAuth := hit(router, http.MethodGet, "/api/v1/work-orders/9", "", "")
 	assert.Equal(t, http.StatusUnauthorized, missingAuth.Code)
+}
+
+func TestWorkOrderTransitionRoutes(t *testing.T) {
+	var gotNote string
+	api := fakeWO{
+		startFn: func(_ context.Context, a user.Actor, id int64, note string) (workorder.WorkOrder, error) {
+			require.Equal(t, user.RoleTechnician, a.Role)
+			require.Equal(t, int64(9), id)
+			gotNote = note
+			x := sampleWO()
+			x.Status = workorder.StatusInProgress
+			return x, nil
+		},
+		completeFn: func(context.Context, user.Actor, int64, string) (workorder.WorkOrder, error) {
+			return workorder.WorkOrder{}, workorder.ErrTechnicianOwnership
+		},
+		closeFn: func(context.Context, user.Actor, int64, string) (workorder.WorkOrder, error) {
+			x := sampleWO()
+			x.Status = workorder.StatusClosed
+			return x, nil
+		},
+		cancelFn: func(context.Context, user.Actor, int64, string) (workorder.WorkOrder, error) {
+			return workorder.WorkOrder{}, workorder.ErrInvalidTransition
+		},
+	}
+	router, secret := woRouter(api)
+	techTok := token(t, secret, user.RoleTechnician)
+	adminTok := token(t, secret, user.RoleAdmin)
+
+	started := hit(router, http.MethodPost, "/api/v1/work-orders/9/start", `{"note":"on it"}`, "Bearer "+techTok)
+	require.Equal(t, http.StatusOK, started.Code)
+	assert.Equal(t, "on it", gotNote)
+	assert.Contains(t, started.Body.String(), `"status":"in_progress"`)
+
+	owned := hit(router, http.MethodPost, "/api/v1/work-orders/9/complete", `{}`, "Bearer "+techTok)
+	assert.Equal(t, http.StatusForbidden, owned.Code)
+	assert.Contains(t, owned.Body.String(), `"code":"not_assigned"`)
+
+	closed := hit(router, http.MethodPost, "/api/v1/work-orders/9/close", "", "Bearer "+adminTok)
+	assert.Equal(t, http.StatusOK, closed.Code)
+
+	bad := hit(router, http.MethodPost, "/api/v1/work-orders/9/cancel", "", "Bearer "+adminTok)
+	assert.Equal(t, http.StatusConflict, bad.Code)
 }
 
 func TestWorkOrderAssigneeError(t *testing.T) {

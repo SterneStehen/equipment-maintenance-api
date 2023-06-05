@@ -10,10 +10,11 @@ import (
 )
 
 type fakeStore struct {
-	createFn func(context.Context, CreateInput) (WorkOrder, error)
-	byIDFn   func(context.Context, int64) (WorkOrder, error)
-	listFn   func(context.Context, ListFilter) ([]WorkOrder, error)
-	updateFn func(context.Context, int64, UpdateInput) (WorkOrder, error)
+	createFn     func(context.Context, CreateInput) (WorkOrder, error)
+	byIDFn       func(context.Context, int64) (WorkOrder, error)
+	listFn       func(context.Context, ListFilter) ([]WorkOrder, error)
+	updateFn     func(context.Context, int64, UpdateInput) (WorkOrder, error)
+	transitionFn func(context.Context, int64, TransitionInput) (WorkOrder, error)
 }
 
 func (f fakeStore) Create(ctx context.Context, in CreateInput) (WorkOrder, error) {
@@ -30,6 +31,10 @@ func (f fakeStore) List(ctx context.Context, flt ListFilter) ([]WorkOrder, error
 
 func (f fakeStore) Update(ctx context.Context, id int64, in UpdateInput) (WorkOrder, error) {
 	return f.updateFn(ctx, id, in)
+}
+
+func (f fakeStore) Transition(ctx context.Context, id int64, in TransitionInput) (WorkOrder, error) {
+	return f.transitionFn(ctx, id, in)
 }
 
 func TestCreateCleansInputAndSetsCreator(t *testing.T) {
@@ -85,9 +90,9 @@ func TestReadAndWritePermissions(t *testing.T) {
 	_, err = svc.Create(context.Background(), user.Actor{Role: user.RoleViewer}, CreateInput{EquipmentID: 1, Title: "Fix"})
 	require.ErrorIs(t, err, ErrPermissionDenied)
 
-	wo, err := svc.Update(context.Background(), user.Actor{Role: user.RoleDispatcher}, 2, UpdateInput{Title: "Fix", Status: StatusCompleted, Priority: PriorityHigh})
+	wo, err := svc.Update(context.Background(), user.Actor{Role: user.RoleDispatcher}, 2, UpdateInput{Title: "Fix", Status: StatusOpen, Priority: PriorityHigh})
 	require.NoError(t, err)
-	assert.Equal(t, StatusCompleted, wo.Status)
+	assert.Equal(t, StatusOpen, wo.Status)
 }
 
 func TestListFilterDefaults(t *testing.T) {
@@ -119,4 +124,25 @@ func TestListRejectsBadFilters(t *testing.T) {
 
 	_, err = svc.List(context.Background(), user.Actor{Role: user.RoleViewer}, ListFilter{EquipmentID: -3})
 	require.ErrorIs(t, err, ErrInvalidEquipment)
+}
+
+func TestTransitionHelpers(t *testing.T) {
+	var got TransitionInput
+	tmp := fakeStore{transitionFn: func(_ context.Context, id int64, in TransitionInput) (WorkOrder, error) {
+		require.Equal(t, int64(7), id)
+		got = in
+		return WorkOrder{ID: id, Status: in.ToStatus}, nil
+	}}
+	svc := NewService(tmp)
+
+	wo, err := svc.Start(context.Background(), user.Actor{UserID: 4, Role: user.RoleTechnician}, 7, "  grabbing it ")
+	require.NoError(t, err)
+	assert.Equal(t, StatusInProgress, wo.Status)
+	assert.Equal(t, int64(4), got.ActorID)
+	assert.Equal(t, user.RoleTechnician, got.ActorRole)
+	assert.Equal(t, "grabbing it", got.Note)
+
+	wo, err = svc.Cancel(context.Background(), user.Actor{UserID: 2, Role: user.RoleDispatcher}, 7, "")
+	require.NoError(t, err)
+	assert.Equal(t, StatusCanceled, wo.Status)
 }

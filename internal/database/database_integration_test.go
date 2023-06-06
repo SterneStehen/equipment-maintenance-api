@@ -50,10 +50,11 @@ func TestPostgreSQLPoolAndMigrationLifecycle(t *testing.T) {
 	if err := migrator.Up(); err != nil {
 		t.Fatalf("apply migrations: %v", err)
 	}
-	assertMigrationVersion(t, migrator, 3)
+	assertMigrationVersion(t, migrator, 4)
 	assertUsersConstraints(t, ctx, pool)
 	assertEquipmentConstraints(t, ctx, pool)
 	assertWorkOrderConstraints(t, ctx, pool)
+	assertWorkOrderHistoryConstraints(t, ctx, pool)
 
 	if err := migrator.Down(); err != nil {
 		t.Fatalf("roll back migrations: %v", err)
@@ -61,11 +62,12 @@ func TestPostgreSQLPoolAndMigrationLifecycle(t *testing.T) {
 	assertUsersTableMissing(t, ctx, pool)
 	assertEquipmentTableMissing(t, ctx, pool)
 	assertWorkOrdersTableMissing(t, ctx, pool)
+	assertWorkOrderHistoryTableMissing(t, ctx, pool)
 
 	if err := migrator.Up(); err != nil {
 		t.Fatalf("reapply migrations: %v", err)
 	}
-	assertMigrationVersion(t, migrator, 3)
+	assertMigrationVersion(t, migrator, 4)
 }
 
 func openTestMigrator(t *testing.T, databaseURL string) *migrate.Migrate {
@@ -224,6 +226,23 @@ func assertWorkOrderConstraints(t *testing.T, ctx context.Context, pool *pgxpool
 	}
 }
 
+func assertWorkOrderHistoryConstraints(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	var cols int
+	if err := pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM information_schema.columns
+		WHERE table_schema = 'public'
+		  AND table_name = 'work_order_history'
+		  AND column_name IN ('id', 'work_order_id', 'from_status', 'to_status', 'actor_id', 'note', 'created_at')
+	`).Scan(&cols); err != nil {
+		t.Fatalf("inspect work_order_history columns: %v", err)
+	}
+	if cols != 7 {
+		t.Fatalf("work_order_history expected column count = %d, want 7", cols)
+	}
+}
+
 func assertUsersTableMissing(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	t.Helper()
 	var tableName *string
@@ -254,5 +273,16 @@ func assertWorkOrdersTableMissing(t *testing.T, ctx context.Context, pool *pgxpo
 	}
 	if tableName != nil {
 		t.Fatalf("work_orders table still exists after rollback: %s", *tableName)
+	}
+}
+
+func assertWorkOrderHistoryTableMissing(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	var tableName *string
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.work_order_history')::text").Scan(&tableName); err != nil {
+		t.Fatalf("check work_order_history table after rollback: %v", err)
+	}
+	if tableName != nil {
+		t.Fatalf("work_order_history table still exists after rollback: %s", *tableName)
 	}
 }

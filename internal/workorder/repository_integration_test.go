@@ -22,9 +22,6 @@ import (
 func TestWorkOrderRepositoryFlow(t *testing.T) {
 	dbURL := os.Getenv("TEST_DATABASE_URL")
 
-
-
-	
 	if dbURL == "" {
 		t.Skip("TEST_DATABASE_URL is not set")
 	}
@@ -53,10 +50,6 @@ func TestWorkOrderRepositoryFlow(t *testing.T) {
 		SerialNumber: "pump-wo-1", Name: "Pump WO",
 	})
 
-
-
-
-
 	require.NoError(t, err)
 	dead, err := equipment.NewService(eqRepo).Create(ctx, user.Actor{Role: user.RoleAdmin}, equipment.CreateInput{
 		SerialNumber: "pump-dead-1", Name: "Old Pump",
@@ -84,43 +77,69 @@ func TestWorkOrderRepositoryFlow(t *testing.T) {
 	require.ErrorIs(t, err, ErrAssigneeNotTechnician)
 
 	updated, err := svc.Update(ctx, user.Actor{UserID: admin, Role: user.RoleAdmin}, wo.ID, UpdateInput{
-		Title: "Replace belt", Status: StatusCompleted, Priority: PriorityUrgent, AssignedTo: &tech,
+		Title: "Replace belt", Status: StatusOpen, Priority: PriorityUrgent, AssignedTo: &tech,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, StatusCompleted, updated.Status)
-	require.NotNil(t, updated.CompletedAt)
+	assert.Equal(t, StatusOpen, updated.Status)
 
-	arr, err := svc.List(ctx, user.Actor{Role: user.RoleViewer}, ListFilter{Status: StatusCompleted, AssignedTo: tech, Limit: 10})
+	started, err := svc.Start(ctx, user.Actor{UserID: tech, Role: user.RoleTechnician}, wo.ID, "started")
+	require.NoError(t, err)
+	assert.Equal(t, StatusInProgress, started.Status)
+
+	_, err = svc.Cancel(ctx, user.Actor{UserID: tech, Role: user.RoleTechnician}, wo.ID, "")
+	require.ErrorIs(t, err, ErrPermissionDenied)
+
+	done, err := svc.Complete(ctx, user.Actor{UserID: tech + 20, Role: user.RoleTechnician}, wo.ID, "")
+	require.ErrorIs(t, err, ErrTechnicianOwnership)
+	assert.Equal(t, WorkOrder{}, done)
+
+	done, err = svc.Complete(ctx, user.Actor{UserID: tech, Role: user.RoleTechnician}, wo.ID, "done")
+	require.NoError(t, err)
+	assert.Equal(t, StatusCompleted, done.Status)
+	require.NotNil(t, done.CompletedAt)
+
+	closed, err := svc.Close(ctx, user.Actor{UserID: admin, Role: user.RoleAdmin}, wo.ID, "ok")
+	require.NoError(t, err)
+	assert.Equal(t, StatusClosed, closed.Status)
+
+	_, err = svc.Start(ctx, user.Actor{UserID: admin, Role: user.RoleAdmin}, wo.ID, "")
+	require.ErrorIs(t, err, ErrTerminalState)
+
+	arr, err := svc.List(ctx, user.Actor{Role: user.RoleViewer}, ListFilter{Status: StatusClosed, AssignedTo: tech, Limit: 10})
 	require.NoError(t, err)
 	require.Len(t, arr, 1)
+
+	var histCount int
+	require.NoError(t, pool.QueryRow(ctx, "SELECT COUNT(*) FROM work_order_history WHERE work_order_id = $1", wo.ID).Scan(&histCount))
+	assert.Equal(t, 3, histCount)
 
 	page, err := svc.List(ctx, user.Actor{Role: user.RoleViewer}, ListFilter{Limit: 1, Offset: 0})
 	require.NoError(t, err)
 	require.Len(t, page, 1)
 }
 
-	func seedWOUsers(t *testing.T, ctx context.Context, pool *pgxpool.Pool) (int64, int64, int64, int64) {
-		t.Helper()
-		var admin, dispatcher, tech, viewer int64
-		require.NoError(t, pool.QueryRow(ctx, `
+func seedWOUsers(t *testing.T, ctx context.Context, pool *pgxpool.Pool) (int64, int64, int64, int64) {
+	t.Helper()
+	var admin, dispatcher, tech, viewer int64
+	require.NoError(t, pool.QueryRow(ctx, `
 			INSERT INTO users (email, password_hash, full_name, role)
 			VALUES ('wo-admin@example.com', 'hash', 'Admin', 'admin')
 			RETURNING id
 		`).Scan(&admin))
-		require.NoError(t, pool.QueryRow(ctx, `
+	require.NoError(t, pool.QueryRow(ctx, `
 			INSERT INTO users (email, password_hash, full_name, role)
 			VALUES ('wo-dispatcher@example.com', 'hash', 'Dispatcher', 'dispatcher')
 			RETURNING id
 		`).Scan(&dispatcher))
-		require.NoError(t, pool.QueryRow(ctx, `
+	require.NoError(t, pool.QueryRow(ctx, `
 			INSERT INTO users (email, password_hash, full_name, role)
 			VALUES ('wo-tech@example.com', 'hash', 'Technician', 'technician')
 			RETURNING id
 		`).Scan(&tech))
-		require.NoError(t, pool.QueryRow(ctx, `
+	require.NoError(t, pool.QueryRow(ctx, `
 			INSERT INTO users (email, password_hash, full_name, role)
 			VALUES ('wo-viewer@example.com', 'hash', 'Viewer', 'viewer')
 			RETURNING id
 		`).Scan(&viewer))
-		return admin, dispatcher, tech, viewer
-	}
+	return admin, dispatcher, tech, viewer
+}

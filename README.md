@@ -134,6 +134,8 @@ curl -X POST http://localhost:8080/api/v1/equipment/1/decommission \
 
 Authenticated users can list and read work orders. Administrators and dispatchers can create and update them. A work order cannot be opened or updated for decommissioned equipment. `assigned_to` is optional, but when supplied it must point to an existing user with the `technician` role.
 
+Work-order state changes use explicit transition endpoints. Allowed transitions are `open -> in_progress`, `open -> canceled`, `in_progress -> completed`, `in_progress -> canceled`, and `completed -> closed`. Closed and canceled work orders are terminal. Every transition writes a history row in the same database transaction. Assigned technicians may start and complete only their own work orders; administrators and dispatchers may run operational transitions.
+
 Supported filters are `status`, `priority`, `equipment_id`, `assigned_to`, `q`, `limit`, and `offset`.
 
 ```sh
@@ -148,7 +150,18 @@ curl 'http://localhost:8080/api/v1/work-orders?status=open&priority=high&equipme
 curl -X PATCH http://localhost:8080/api/v1/work-orders/1 \
   -H 'Authorization: Bearer <admin_or_dispatcher_token>' \
   -H 'Content-Type: application/json' \
-  -d '{"title":"Replace belt","status":"completed","priority":"urgent","assigned_to":3}'
+  -d '{"title":"Replace belt","priority":"urgent","assigned_to":3}'
+
+curl -X POST http://localhost:8080/api/v1/work-orders/1/start \
+  -H 'Authorization: Bearer <assigned_technician_token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"note":"starting now"}'
+
+curl -X POST http://localhost:8080/api/v1/work-orders/1/complete \
+  -H 'Authorization: Bearer <assigned_technician_token>'
+
+curl -X POST http://localhost:8080/api/v1/work-orders/1/close \
+  -H 'Authorization: Bearer <admin_or_dispatcher_token>'
 ```
 
 ## Development commands

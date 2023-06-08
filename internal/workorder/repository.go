@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/SterneStehen/equipment-maintenance-api/internal/equipment"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/user"

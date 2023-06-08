@@ -41,7 +41,7 @@ func TestWorkOrderRepositoryFlow(t *testing.T) {
 	pool, err := appdb.Open(ctx, appdb.Config{URL: dbURL, MaxConnections: 5, MinConnections: 1})
 	require.NoError(t, err)
 	defer pool.Close()
-	_, err = pool.Exec(ctx, "TRUNCATE work_orders, equipment, users RESTART IDENTITY")
+	_, err = pool.Exec(ctx, "TRUNCATE work_order_history, work_orders, equipment, users RESTART IDENTITY CASCADE")
 	require.NoError(t, err)
 
 	admin, dispatcher, tech, viewer := seedWOUsers(t, ctx, pool)

@@ -69,6 +69,14 @@ type HistoryEntry struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+type Comment struct {
+	ID          int64     `json:"id"`
+	WorkOrderID int64     `json:"work_order_id"`
+	AuthorID    int64     `json:"author_id"`
+	Body        string    `json:"body"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 type ListFilter struct {
 	Status      Status
 	Priority    Priority
@@ -93,6 +101,7 @@ var (
 	ErrInvalidTransition       = errors.New("invalid work order transition")
 	ErrTerminalState           = errors.New("work order is in terminal state")
 	ErrTechnicianOwnership     = errors.New("technician does not own this work order")
+	ErrInvalidComment          = errors.New("invalid work order comment")
 )
 
 var allowedNext = map[Status][]Status{

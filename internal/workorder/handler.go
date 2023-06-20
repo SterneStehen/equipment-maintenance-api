@@ -21,6 +21,8 @@ type svc interface {
 	Complete(ctx context.Context, actor user.Actor, id int64, note string) (WorkOrder, error)
 	Close(ctx context.Context, actor user.Actor, id int64, note string) (WorkOrder, error)
 	Cancel(ctx context.Context, actor user.Actor, id int64, note string) (WorkOrder, error)
+	AddComment(ctx context.Context, actor user.Actor, id int64, body string) (Comment, error)
+	ListComments(ctx context.Context, actor user.Actor, id int64, limit, offset int) ([]Comment, error)
 }
 
 type Handler struct {
@@ -45,6 +47,10 @@ type updateReq struct {
 
 type transitionReq struct {
 	Note string `json:"note"`
+}
+
+type commentReq struct {
+	Body string `json:"body" binding:"required"`
 }
 
 func NewHandler(svc svc) *Handler {
@@ -153,6 +159,53 @@ func (h *Handler) Close(c *gin.Context) {
 
 func (h *Handler) Cancel(c *gin.Context) {
 	h.transition(c, h.svc.Cancel)
+}
+
+func (h *Handler) AddComment(c *gin.Context) {
+	who, ok := actor(c)
+	if !ok {
+		return
+	}
+	id, ok := idFromPath(c)
+	if !ok {
+		return
+	}
+	var req commentReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apperror.Write(c, http.StatusBadRequest, "invalid_request", "Comment body is required")
+		return
+	}
+	comment, err := h.svc.AddComment(c.Request.Context(), who, id, req.Body)
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"comment": comment})
+}
+
+func (h *Handler) ListComments(c *gin.Context) {
+	who, ok := actor(c)
+	if !ok {
+		return
+	}
+	id, ok := idFromPath(c)
+	if !ok {
+		return
+	}
+	limit, ok := intQuery(c, "limit", 0)
+	if !ok {
+		return
+	}
+	offset, ok := intQuery(c, "offset", 0)
+	if !ok {
+		return
+	}
+	arr, err := h.svc.ListComments(c.Request.Context(), who, id, limit, offset)
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"comments": arr, "limit": limit, "offset": offset})
 }
 
 func (h *Handler) transition(c *gin.Context, fn func(context.Context, user.Actor, int64, string) (WorkOrder, error)) {
@@ -264,6 +317,8 @@ func writeErr(c *gin.Context, err error) {
 		apperror.Write(c, http.StatusConflict, "terminal_state", "Work order is already closed or canceled")
 	case errors.Is(err, ErrTechnicianOwnership):
 		apperror.Write(c, http.StatusForbidden, "not_assigned", "Technician is not assigned to this work order")
+	case errors.Is(err, ErrInvalidComment):
+		apperror.Write(c, http.StatusBadRequest, "invalid_comment", "Comment body is required")
 	case errors.Is(err, ErrNotFound):
 		apperror.Write(c, http.StatusNotFound, "not_found", "Work order was not found")
 	default:

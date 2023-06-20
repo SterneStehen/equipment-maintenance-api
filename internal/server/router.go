@@ -59,6 +59,8 @@ func NewRouter(deps Dependencies) http.Handler {
 			protected.POST("/work-orders/:id/complete", deps.WorkOrder.Complete)
 			protected.POST("/work-orders/:id/close", deps.WorkOrder.Close)
 			protected.POST("/work-orders/:id/cancel", deps.WorkOrder.Cancel)
+			protected.GET("/work-orders/:id/comments", deps.WorkOrder.ListComments)
+			protected.POST("/work-orders/:id/comments", deps.WorkOrder.AddComment)
 		}
 	}
 	return router

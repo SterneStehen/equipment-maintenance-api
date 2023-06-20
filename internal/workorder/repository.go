@@ -175,6 +175,52 @@ func (r *Repository) Transition(ctx context.Context, id int64, in TransitionInpu
 	return next, nil
 }
 
+func (r *Repository) CreateComment(ctx context.Context, in CommentInput) (Comment, error) {
+	if _, err := r.ByID(ctx, in.WorkOrderID); err != nil {
+		return Comment{}, err
+	}
+	row := r.pool.QueryRow(ctx, `
+		INSERT INTO work_order_comments (work_order_id, author_id, body)
+		VALUES ($1, $2, $3)
+		RETURNING id, work_order_id, author_id, body, created_at
+	`, in.WorkOrderID, in.AuthorID, in.Body)
+	c, err := scanComment(row)
+	if err != nil {
+		return Comment{}, fmt.Errorf("insert work order comment: %w", err)
+	}
+	return c, nil
+}
+
+func (r *Repository) ListComments(ctx context.Context, workOrderID int64, limit, offset int) ([]Comment, error) {
+	if _, err := r.ByID(ctx, workOrderID); err != nil {
+		return nil, err
+	}
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, work_order_id, author_id, body, created_at
+		FROM work_order_comments
+		WHERE work_order_id = $1
+		ORDER BY id
+		LIMIT $2 OFFSET $3
+	`, workOrderID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list work order comments: %w", err)
+	}
+	defer rows.Close()
+
+	var arr []Comment
+	for rows.Next() {
+		c, err := scanComment(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan work order comment: %w", err)
+		}
+		arr = append(arr, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read work order comments: %w", err)
+	}
+	return arr, nil
+}
+
 func transitionPerm(wo WorkOrder, in TransitionInput) error {
 	if in.ActorRole == user.RoleAdmin || in.ActorRole == user.RoleDispatcher {
 		return nil
@@ -232,4 +278,10 @@ func scanWO(row rowish) (WorkOrder, error) {
 	var x WorkOrder
 	err := row.Scan(&x.ID, &x.EquipmentID, &x.Title, &x.Description, &x.Status, &x.Priority, &x.AssignedTo, &x.CreatedBy, &x.CreatedAt, &x.UpdatedAt, &x.CompletedAt)
 	return x, err
+}
+
+func scanComment(row rowish) (Comment, error) {
+	var c Comment
+	err := row.Scan(&c.ID, &c.WorkOrderID, &c.AuthorID, &c.Body, &c.CreatedAt)
+	return c, err
 }

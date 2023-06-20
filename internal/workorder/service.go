@@ -18,6 +18,8 @@ type store interface {
 	List(ctx context.Context, f ListFilter) ([]WorkOrder, error)
 	Update(ctx context.Context, id int64, in UpdateInput) (WorkOrder, error)
 	Transition(ctx context.Context, id int64, in TransitionInput) (WorkOrder, error)
+	CreateComment(ctx context.Context, in CommentInput) (Comment, error)
+	ListComments(ctx context.Context, workOrderID int64, limit, offset int) ([]Comment, error)
 }
 
 type Service struct {
@@ -46,6 +48,12 @@ type TransitionInput struct {
 	ActorRole user.Role
 	ToStatus  Status
 	Note      string
+}
+
+type CommentInput struct {
+	WorkOrderID int64
+	AuthorID    int64
+	Body        string
 }
 
 func NewService(repo store) *Service {
@@ -113,6 +121,39 @@ func (s *Service) Close(ctx context.Context, actor user.Actor, id int64, note st
 
 func (s *Service) Cancel(ctx context.Context, actor user.Actor, id int64, note string) (WorkOrder, error) {
 	return s.move(ctx, actor, id, StatusCanceled, note)
+}
+
+func (s *Service) AddComment(ctx context.Context, actor user.Actor, id int64, body string) (Comment, error) {
+	if !canRead(actor.Role) {
+		return Comment{}, ErrPermissionDenied
+	}
+	if id < 1 {
+		return Comment{}, ErrNotFound
+	}
+	txt := trimTo(body, 2000)
+	if txt == "" {
+		return Comment{}, ErrInvalidComment
+	}
+	return s.repo.CreateComment(ctx, CommentInput{WorkOrderID: id, AuthorID: actor.UserID, Body: txt})
+}
+
+func (s *Service) ListComments(ctx context.Context, actor user.Actor, id int64, limit, offset int) ([]Comment, error) {
+	if !canRead(actor.Role) {
+		return nil, ErrPermissionDenied
+	}
+	if id < 1 {
+		return nil, ErrNotFound
+	}
+	if limit <= 0 {
+		limit = defaultLimit
+	}
+	if limit > maxLimit {
+		limit = maxLimit
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return s.repo.ListComments(ctx, id, limit, offset)
 }
 
 func (s *Service) move(ctx context.Context, actor user.Actor, id int64, to Status, note string) (WorkOrder, error) {

@@ -13,6 +13,7 @@ import (
 	"github.com/SterneStehen/equipment-maintenance-api/internal/config"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/database"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/equipment"
+	"github.com/SterneStehen/equipment-maintenance-api/internal/maintenance"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/server"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/user"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/workorder"
@@ -55,8 +56,10 @@ func run(logger *log.Logger) error {
 	equipmentHandler := equipment.NewHandler(equipmentSvc)
 	workOrders := workorder.NewService(workorder.NewRepository(pool))
 	workOrderHandler := workorder.NewHandler(workOrders)
+	maintenanceSvc := maintenance.NewService(maintenance.NewRepository(pool))
+	maintenanceHandler := maintenance.NewHandler(maintenanceSvc)
 	router := server.NewRouter(server.Dependencies{
-		Auth: authHandler, Equipment: equipmentHandler, Tokens: tokens, WorkOrder: workOrderHandler,
+		Auth: authHandler, Equipment: equipmentHandler, Maint: maintenanceHandler, Tokens: tokens, WorkOrder: workOrderHandler,
 	})
 
 	httpServer := server.New(cfg.HTTPAddress, router)

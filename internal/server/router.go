@@ -6,6 +6,7 @@ import (
 	"github.com/SterneStehen/equipment-maintenance-api/internal/auth"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/equipment"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/health"
+	"github.com/SterneStehen/equipment-maintenance-api/internal/maintenance"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/user"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/workorder"
 	"github.com/gin-gonic/gin"
@@ -14,6 +15,7 @@ import (
 type Dependencies struct {
 	Auth      *auth.Handler
 	Equipment *equipment.Handler
+	Maint     *maintenance.Handler
 	Tokens    *auth.Manager
 	WorkOrder *workorder.Handler
 }
@@ -61,6 +63,9 @@ func NewRouter(deps Dependencies) http.Handler {
 			protected.POST("/work-orders/:id/cancel", deps.WorkOrder.Cancel)
 			protected.GET("/work-orders/:id/comments", deps.WorkOrder.ListComments)
 			protected.POST("/work-orders/:id/comments", deps.WorkOrder.AddComment)
+		}
+		if deps.Maint != nil {
+			protected.GET("/maintenance-records", deps.Maint.List)
 		}
 	}
 	return router

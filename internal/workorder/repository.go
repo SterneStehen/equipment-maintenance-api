@@ -13,7 +13,8 @@ import (
 )
 
 type Repository struct {
-	pool *pgxpool.Pool
+	pool                     *pgxpool.Pool
+	failMaintenanceAfterHist bool
 }
 
 func NewRepository(pool *pgxpool.Pool) *Repository {
@@ -168,6 +169,17 @@ func (r *Repository) Transition(ctx context.Context, id int64, in TransitionInpu
 		VALUES ($1, $2, $3, $4, $5)
 	`, id, current.Status, in.ToStatus, in.ActorID, strings.TrimSpace(in.Note)); err != nil {
 		return WorkOrder{}, fmt.Errorf("insert work order history: %w", err)
+	}
+	if in.ToStatus == StatusCompleted {
+		if r.failMaintenanceAfterHist {
+			return WorkOrder{}, errors.New("forced maintenance record failure")
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO maintenance_records (work_order_id, equipment_id, performed_by, notes)
+			VALUES ($1, $2, $3, $4)
+		`, id, current.EquipmentID, in.ActorID, strings.TrimSpace(in.Note)); err != nil {
+			return WorkOrder{}, fmt.Errorf("insert maintenance record: %w", err)
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return WorkOrder{}, fmt.Errorf("commit work order transition: %w", err)

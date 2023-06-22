@@ -26,6 +26,8 @@ type fakeWO struct {
 	completeFn func(context.Context, user.Actor, int64, string) (workorder.WorkOrder, error)
 	closeFn    func(context.Context, user.Actor, int64, string) (workorder.WorkOrder, error)
 	cancelFn   func(context.Context, user.Actor, int64, string) (workorder.WorkOrder, error)
+	commentFn  func(context.Context, user.Actor, int64, string) (workorder.Comment, error)
+	commentsFn func(context.Context, user.Actor, int64, int, int) ([]workorder.Comment, error)
 }
 
 func (f fakeWO) Create(ctx context.Context, a user.Actor, in workorder.CreateInput) (workorder.WorkOrder, error) {
@@ -58,6 +60,14 @@ func (f fakeWO) Close(ctx context.Context, a user.Actor, id int64, note string) 
 
 func (f fakeWO) Cancel(ctx context.Context, a user.Actor, id int64, note string) (workorder.WorkOrder, error) {
 	return f.cancelFn(ctx, a, id, note)
+}
+
+func (f fakeWO) AddComment(ctx context.Context, a user.Actor, id int64, body string) (workorder.Comment, error) {
+	return f.commentFn(ctx, a, id, body)
+}
+
+func (f fakeWO) ListComments(ctx context.Context, a user.Actor, id int64, limit, offset int) ([]workorder.Comment, error) {
+	return f.commentsFn(ctx, a, id, limit, offset)
 }
 
 func TestWorkOrderCreateAndReadRoutes(t *testing.T) {
@@ -188,6 +198,33 @@ func TestWorkOrderAssigneeError(t *testing.T) {
 	res := hit(router, http.MethodPost, "/api/v1/work-orders", `{"equipment_id":2,"title":"Fix","assigned_to":4}`, "Bearer "+dispatcherTok)
 	assert.Equal(t, http.StatusBadRequest, res.Code)
 	assert.Contains(t, res.Body.String(), `"code":"invalid_assignee"`)
+}
+
+func TestWorkOrderCommentsRoutes(t *testing.T) {
+	api := fakeWO{
+		commentFn: func(_ context.Context, a user.Actor, id int64, body string) (workorder.Comment, error) {
+			require.Equal(t, user.RoleViewer, a.Role)
+			require.Equal(t, int64(9), id)
+			require.Equal(t, "hi", body)
+			return workorder.Comment{ID: 3, WorkOrderID: id, AuthorID: a.UserID, Body: body}, nil
+		},
+		commentsFn: func(_ context.Context, a user.Actor, id int64, limit, offset int) ([]workorder.Comment, error) {
+			require.Equal(t, int64(9), id)
+			require.Equal(t, 2, limit)
+			require.Equal(t, 1, offset)
+			return []workorder.Comment{{ID: 3, WorkOrderID: id, Body: "hi"}}, nil
+		},
+	}
+	router, secret := woRouter(api)
+	viewerTok := token(t, secret, user.RoleViewer)
+
+	created := hit(router, http.MethodPost, "/api/v1/work-orders/9/comments", `{"body":"hi"}`, "Bearer "+viewerTok)
+	require.Equal(t, http.StatusCreated, created.Code)
+	assert.Contains(t, created.Body.String(), `"body":"hi"`)
+
+	listed := hit(router, http.MethodGet, "/api/v1/work-orders/9/comments?limit=2&offset=1", "", "Bearer "+viewerTok)
+	require.Equal(t, http.StatusOK, listed.Code)
+	assert.Contains(t, listed.Body.String(), `"comments"`)
 }
 
 type authStub struct{}

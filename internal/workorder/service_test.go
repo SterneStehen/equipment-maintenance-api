@@ -15,6 +15,8 @@ type fakeStore struct {
 	listFn       func(context.Context, ListFilter) ([]WorkOrder, error)
 	updateFn     func(context.Context, int64, UpdateInput) (WorkOrder, error)
 	transitionFn func(context.Context, int64, TransitionInput) (WorkOrder, error)
+	commentFn    func(context.Context, CommentInput) (Comment, error)
+	commentsFn   func(context.Context, int64, int, int) ([]Comment, error)
 }
 
 func (f fakeStore) Create(ctx context.Context, in CreateInput) (WorkOrder, error) {
@@ -35,6 +37,14 @@ func (f fakeStore) Update(ctx context.Context, id int64, in UpdateInput) (WorkOr
 
 func (f fakeStore) Transition(ctx context.Context, id int64, in TransitionInput) (WorkOrder, error) {
 	return f.transitionFn(ctx, id, in)
+}
+
+func (f fakeStore) CreateComment(ctx context.Context, in CommentInput) (Comment, error) {
+	return f.commentFn(ctx, in)
+}
+
+func (f fakeStore) ListComments(ctx context.Context, id int64, limit, offset int) ([]Comment, error) {
+	return f.commentsFn(ctx, id, limit, offset)
 }
 
 func TestCreateCleansInputAndSetsCreator(t *testing.T) {
@@ -145,4 +155,33 @@ func TestTransitionHelpers(t *testing.T) {
 	wo, err = svc.Cancel(context.Background(), user.Actor{UserID: 2, Role: user.RoleDispatcher}, 7, "")
 	require.NoError(t, err)
 	assert.Equal(t, StatusCanceled, wo.Status)
+}
+
+func TestComments(t *testing.T) {
+	var got CommentInput
+	tmp := fakeStore{
+		commentFn: func(_ context.Context, in CommentInput) (Comment, error) {
+			got = in
+			return Comment{ID: 1, WorkOrderID: in.WorkOrderID, AuthorID: in.AuthorID, Body: in.Body}, nil
+		},
+		commentsFn: func(_ context.Context, id int64, limit, offset int) ([]Comment, error) {
+			require.Equal(t, int64(8), id)
+			require.Equal(t, maxLimit, limit)
+			require.Equal(t, 0, offset)
+			return []Comment{{ID: 1, Body: "ok"}}, nil
+		},
+	}
+	svc := NewService(tmp)
+
+	c, err := svc.AddComment(context.Background(), user.Actor{UserID: 3, Role: user.RoleViewer}, 8, "  nice fix ")
+	require.NoError(t, err)
+	assert.Equal(t, "nice fix", c.Body)
+	assert.Equal(t, int64(3), got.AuthorID)
+
+	arr, err := svc.ListComments(context.Background(), user.Actor{Role: user.RoleViewer}, 8, 500, -3)
+	require.NoError(t, err)
+	require.Len(t, arr, 1)
+
+	_, err = svc.AddComment(context.Background(), user.Actor{Role: user.RoleViewer}, 8, " ")
+	require.ErrorIs(t, err, ErrInvalidComment)
 }

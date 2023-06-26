@@ -41,7 +41,7 @@ func TestWorkOrderRepositoryFlow(t *testing.T) {
 	pool, err := appdb.Open(ctx, appdb.Config{URL: dbURL, MaxConnections: 5, MinConnections: 1})
 	require.NoError(t, err)
 	defer pool.Close()
-	_, err = pool.Exec(ctx, "TRUNCATE work_order_history, work_orders, equipment, users RESTART IDENTITY CASCADE")
+	_, err = pool.Exec(ctx, "TRUNCATE maintenance_records, work_order_comments, work_order_history, work_orders, equipment, users RESTART IDENTITY CASCADE")
 	require.NoError(t, err)
 
 	admin, dispatcher, tech, viewer := seedWOUsers(t, ctx, pool)
@@ -65,6 +65,15 @@ func TestWorkOrderRepositoryFlow(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, dispatcher, wo.CreatedBy)
 	assert.Equal(t, &tech, wo.AssignedTo)
+
+	comment, err := svc.AddComment(ctx, user.Actor{UserID: viewer, Role: user.RoleViewer}, wo.ID, "  watching this ")
+	require.NoError(t, err)
+	assert.Equal(t, "watching this", comment.Body)
+
+	comments, err := svc.ListComments(ctx, user.Actor{UserID: dispatcher, Role: user.RoleDispatcher}, wo.ID, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, comments, 1)
+	assert.Equal(t, viewer, comments[0].AuthorID)
 
 	_, err = svc.Create(ctx, user.Actor{UserID: dispatcher, Role: user.RoleDispatcher}, CreateInput{
 		EquipmentID: dead.ID, Title: "Try old pump",

@@ -50,11 +50,13 @@ func TestPostgreSQLPoolAndMigrationLifecycle(t *testing.T) {
 	if err := migrator.Up(); err != nil {
 		t.Fatalf("apply migrations: %v", err)
 	}
-	assertMigrationVersion(t, migrator, 4)
+	assertMigrationVersion(t, migrator, 5)
 	assertUsersConstraints(t, ctx, pool)
 	assertEquipmentConstraints(t, ctx, pool)
 	assertWorkOrderConstraints(t, ctx, pool)
 	assertWorkOrderHistoryConstraints(t, ctx, pool)
+	assertCommentConstraints(t, ctx, pool)
+	assertMaintenanceRecordConstraints(t, ctx, pool)
 
 	if err := migrator.Down(); err != nil {
 		t.Fatalf("roll back migrations: %v", err)
@@ -63,11 +65,13 @@ func TestPostgreSQLPoolAndMigrationLifecycle(t *testing.T) {
 	assertEquipmentTableMissing(t, ctx, pool)
 	assertWorkOrdersTableMissing(t, ctx, pool)
 	assertWorkOrderHistoryTableMissing(t, ctx, pool)
+	assertWorkOrderCommentsTableMissing(t, ctx, pool)
+	assertMaintenanceRecordsTableMissing(t, ctx, pool)
 
 	if err := migrator.Up(); err != nil {
 		t.Fatalf("reapply migrations: %v", err)
 	}
-	assertMigrationVersion(t, migrator, 4)
+	assertMigrationVersion(t, migrator, 5)
 }
 
 func openTestMigrator(t *testing.T, databaseURL string) *migrate.Migrate {
@@ -243,6 +247,68 @@ func assertWorkOrderHistoryConstraints(t *testing.T, ctx context.Context, pool *
 	}
 }
 
+func assertCommentConstraints(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	var cols int
+	if err := pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM information_schema.columns
+		WHERE table_schema = 'public'
+		  AND table_name = 'work_order_comments'
+		  AND column_name IN ('id', 'work_order_id', 'author_id', 'body', 'created_at')
+	`).Scan(&cols); err != nil {
+		t.Fatalf("inspect work_order_comments columns: %v", err)
+	}
+	if cols != 5 {
+		t.Fatalf("work_order_comments expected column count = %d, want 5", cols)
+	}
+
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO work_order_comments (work_order_id, author_id, body)
+		VALUES (1, 1, 'looks done')
+	`); err != nil {
+		t.Fatalf("insert valid work order comment: %v", err)
+	}
+
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO work_order_comments (work_order_id, author_id, body)
+		VALUES (1, 1, '')
+	`); err == nil {
+		t.Fatal("blank work order comment was accepted")
+	}
+}
+
+func assertMaintenanceRecordConstraints(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	var cols int
+	if err := pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM information_schema.columns
+		WHERE table_schema = 'public'
+		  AND table_name = 'maintenance_records'
+		  AND column_name IN ('id', 'work_order_id', 'equipment_id', 'performed_by', 'notes', 'created_at')
+	`).Scan(&cols); err != nil {
+		t.Fatalf("inspect maintenance_records columns: %v", err)
+	}
+	if cols != 6 {
+		t.Fatalf("maintenance_records expected column count = %d, want 6", cols)
+	}
+
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO maintenance_records (work_order_id, equipment_id, performed_by, notes)
+		VALUES (1, 1, 1, 'belt changed')
+	`); err != nil {
+		t.Fatalf("insert valid maintenance record: %v", err)
+	}
+
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO maintenance_records (work_order_id, equipment_id, performed_by, notes)
+		VALUES (1, 1, 1, 'duplicate')
+	`); err == nil {
+		t.Fatal("duplicate maintenance record for work order was accepted")
+	}
+}
+
 func assertUsersTableMissing(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	t.Helper()
 	var tableName *string
@@ -284,5 +350,27 @@ func assertWorkOrderHistoryTableMissing(t *testing.T, ctx context.Context, pool 
 	}
 	if tableName != nil {
 		t.Fatalf("work_order_history table still exists after rollback: %s", *tableName)
+	}
+}
+
+func assertWorkOrderCommentsTableMissing(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	var tableName *string
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.work_order_comments')::text").Scan(&tableName); err != nil {
+		t.Fatalf("check work_order_comments table after rollback: %v", err)
+	}
+	if tableName != nil {
+		t.Fatalf("work_order_comments table still exists after rollback: %s", *tableName)
+	}
+}
+
+func assertMaintenanceRecordsTableMissing(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	var tableName *string
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.maintenance_records')::text").Scan(&tableName); err != nil {
+		t.Fatalf("check maintenance_records table after rollback: %v", err)
+	}
+	if tableName != nil {
+		t.Fatalf("maintenance_records table still exists after rollback: %s", *tableName)
 	}
 }

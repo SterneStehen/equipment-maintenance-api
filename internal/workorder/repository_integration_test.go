@@ -107,6 +107,17 @@ func TestWorkOrderRepositoryFlow(t *testing.T) {
 	assert.Equal(t, StatusCompleted, done.Status)
 	require.NotNil(t, done.CompletedAt)
 
+	var recEquipment, recPerformer int64
+	var recNotes string
+	require.NoError(t, pool.QueryRow(ctx, `
+		SELECT equipment_id, performed_by, notes
+		FROM maintenance_records
+		WHERE work_order_id = $1
+	`, wo.ID).Scan(&recEquipment, &recPerformer, &recNotes))
+	assert.Equal(t, pump.ID, recEquipment)
+	assert.Equal(t, tech, recPerformer)
+	assert.Equal(t, "done", recNotes)
+
 	closed, err := svc.Close(ctx, user.Actor{UserID: admin, Role: user.RoleAdmin}, wo.ID, "ok")
 	require.NoError(t, err)
 	assert.Equal(t, StatusClosed, closed.Status)

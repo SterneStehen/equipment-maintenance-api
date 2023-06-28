@@ -138,6 +138,62 @@ func TestWorkOrderRepositoryFlow(t *testing.T) {
 	require.Len(t, page, 1)
 }
 
+func TestCompleteRollbackWhenMaintenanceRecordFails(t *testing.T) {
+	dbURL := os.Getenv("TEST_DATABASE_URL")
+
+	if dbURL == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	m, err := appdb.NewMigrator(dbURL, "../../migrations")
+	require.NoError(t, err)
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		t.Fatalf("apply migrations: %v", err)
+	}
+	srcErr, dbErr := m.Close()
+	require.NoError(t, srcErr)
+	require.NoError(t, dbErr)
+
+	pool, err := appdb.Open(ctx, appdb.Config{URL: dbURL, MaxConnections: 5, MinConnections: 1})
+	require.NoError(t, err)
+	defer pool.Close()
+	_, err = pool.Exec(ctx, "TRUNCATE maintenance_records, work_order_comments, work_order_history, work_orders, equipment, users RESTART IDENTITY CASCADE")
+	require.NoError(t, err)
+
+	_, dispatcher, tech, _ := seedWOUsers(t, ctx, pool)
+	pump, err := equipment.NewService(equipment.NewRepository(pool)).Create(ctx, user.Actor{Role: user.RoleDispatcher}, equipment.CreateInput{
+		SerialNumber: "rollback-pump-1", Name: "Rollback Pump",
+	})
+	require.NoError(t, err)
+
+	repo := NewRepository(pool)
+	svc := NewService(repo)
+	wo, err := svc.Create(ctx, user.Actor{UserID: dispatcher, Role: user.RoleDispatcher}, CreateInput{
+		EquipmentID: pump.ID, Title: "Rollback complete", AssignedTo: &tech,
+	})
+	require.NoError(t, err)
+
+	_, err = svc.Start(ctx, user.Actor{UserID: tech, Role: user.RoleTechnician}, wo.ID, "")
+	require.NoError(t, err)
+
+	repo.failMaintenanceAfterHist = true
+	_, err = svc.Complete(ctx, user.Actor{UserID: tech, Role: user.RoleTechnician}, wo.ID, "should rollback")
+	require.Error(t, err)
+
+	var st Status
+	require.NoError(t, pool.QueryRow(ctx, "SELECT status FROM work_orders WHERE id = $1", wo.ID).Scan(&st))
+	assert.Equal(t, StatusInProgress, st)
+
+	var histCount, recCount int
+	require.NoError(t, pool.QueryRow(ctx, "SELECT COUNT(*) FROM work_order_history WHERE work_order_id = $1", wo.ID).Scan(&histCount))
+	require.NoError(t, pool.QueryRow(ctx, "SELECT COUNT(*) FROM maintenance_records WHERE work_order_id = $1", wo.ID).Scan(&recCount))
+	assert.Equal(t, 1, histCount)
+	assert.Equal(t, 0, recCount)
+}
+
 func seedWOUsers(t *testing.T, ctx context.Context, pool *pgxpool.Pool) (int64, int64, int64, int64) {
 	t.Helper()
 	var admin, dispatcher, tech, viewer int64

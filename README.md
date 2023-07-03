@@ -64,7 +64,7 @@ make db-clean       # stop PostgreSQL and remove local database data
 
 Migration files live in `migrations/` as matching, sequentially numbered `.up.sql` and `.down.sql` files. Migrations are explicit SQL and each multi-statement migration is transaction-wrapped. Apply migrations explicitly before starting a newly deployed application version; the API does not mutate its schema automatically.
 
-The first migration creates `users` with normalized unique email, role and non-empty value constraints, timezone-aware timestamps, and a role index. The second migration creates `equipment` with normalized unique serial numbers, status constraints, timestamps, and decommission tracking. The third migration creates `work_orders` with equipment/user references, status and priority constraints, assignee tracking, and completion timestamps. Rollback drops the matching table for each migration.
+The first migration creates `users` with normalized unique email, role and non-empty value constraints, timezone-aware timestamps, and a role index. The second migration creates `equipment` with normalized unique serial numbers, status constraints, timestamps, and decommission tracking. The third migration creates `work_orders` with equipment/user references, status and priority constraints, assignee tracking, and completion timestamps. The fourth migration stores work-order transition history. The fifth adds work-order comments and one maintenance record per completed work order. Rollback drops the matching table for each migration.
 
 ## Users and authentication
 
@@ -134,9 +134,9 @@ curl -X POST http://localhost:8080/api/v1/equipment/1/decommission \
 
 Authenticated users can list and read work orders. Administrators and dispatchers can create and update them. A work order cannot be opened or updated for decommissioned equipment. `assigned_to` is optional, but when supplied it must point to an existing user with the `technician` role.
 
-Work-order state changes use explicit transition endpoints. Allowed transitions are `open -> in_progress`, `open -> canceled`, `in_progress -> completed`, `in_progress -> canceled`, and `completed -> closed`. Closed and canceled work orders are terminal. Every transition writes a history row in the same database transaction. Assigned technicians may start and complete only their own work orders; administrators and dispatchers may run operational transitions.
+Work-order state changes use explicit transition endpoints. Allowed transitions are `open -> in_progress`, `open -> canceled`, `in_progress -> completed`, `in_progress -> canceled`, and `completed -> closed`. Closed and canceled work orders are terminal. Every transition writes a history row in the same database transaction. Completing a work order also creates its maintenance record in that same transaction, so a partial completion is rolled back. Assigned technicians may start and complete only their own work orders; administrators and dispatchers may run operational transitions.
 
-Supported filters are `status`, `priority`, `equipment_id`, `assigned_to`, `q`, `limit`, and `offset`.
+Supported filters are `status`, `priority`, `equipment_id`, `assigned_to`, `q`, `limit`, and `offset`. Authenticated users can add and list comments on a work order.
 
 ```sh
 curl -X POST http://localhost:8080/api/v1/work-orders \
@@ -162,6 +162,23 @@ curl -X POST http://localhost:8080/api/v1/work-orders/1/complete \
 
 curl -X POST http://localhost:8080/api/v1/work-orders/1/close \
   -H 'Authorization: Bearer <admin_or_dispatcher_token>'
+
+curl -X POST http://localhost:8080/api/v1/work-orders/1/comments \
+  -H 'Authorization: Bearer <access_token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"body":"left a note for next shift"}'
+
+curl 'http://localhost:8080/api/v1/work-orders/1/comments?limit=20&offset=0' \
+  -H 'Authorization: Bearer <access_token>'
+```
+
+## Maintenance records
+
+Maintenance records are created when a work order is completed. Authenticated users can list them and filter by `work_order_id`, `equipment_id`, `performed_by`, `limit`, and `offset`.
+
+```sh
+curl 'http://localhost:8080/api/v1/maintenance-records?equipment_id=1&limit=20&offset=0' \
+  -H 'Authorization: Bearer <access_token>'
 ```
 
 ## Development commands
@@ -181,4 +198,4 @@ make check     # run all verification commands
 
 The repository uses a domain-oriented layout. `cmd/api` is the executable composition root and `cmd/migrate` is the migration runner. Packages under `internal` separate configuration, database, and HTTP infrastructure from the `user`, `equipment`, `workorder`, and `maintenance` domains. Handlers own HTTP concerns, services will own business rules, and repositories will own parameterized SQL.
 
-The implemented HTTP surface is `GET /health`, auth/user endpoints, administrator role endpoints, authenticated equipment endpoints under `/api/v1/equipment`, and authenticated work-order endpoints under `/api/v1/work-orders`.
+The implemented HTTP surface is `GET /health`, auth/user endpoints, administrator role endpoints, authenticated equipment endpoints under `/api/v1/equipment`, authenticated work-order endpoints under `/api/v1/work-orders`, and authenticated maintenance-record listing under `/api/v1/maintenance-records`.

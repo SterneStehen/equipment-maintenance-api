@@ -184,4 +184,10 @@ func TestComments(t *testing.T) {
 
 	_, err = svc.AddComment(context.Background(), user.Actor{Role: user.RoleViewer}, 8, " ")
 	require.ErrorIs(t, err, ErrInvalidComment)
+
+	_, err = svc.AddComment(context.Background(), user.Actor{Role: user.Role("")}, 8, "nope")
+	require.ErrorIs(t, err, ErrPermissionDenied)
+
+	_, err = svc.ListComments(context.Background(), user.Actor{Role: user.RoleViewer}, 0, 10, 0)
+	require.ErrorIs(t, err, ErrNotFound)
 }

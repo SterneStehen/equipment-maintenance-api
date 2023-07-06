@@ -227,6 +227,20 @@ func TestWorkOrderCommentsRoutes(t *testing.T) {
 	assert.Contains(t, listed.Body.String(), `"comments"`)
 }
 
+func TestWorkOrderCommentError(t *testing.T) {
+	api := fakeWO{
+		commentFn: func(context.Context, user.Actor, int64, string) (workorder.Comment, error) {
+			return workorder.Comment{}, workorder.ErrInvalidComment
+		},
+	}
+	router, secret := woRouter(api)
+	viewerTok := token(t, secret, user.RoleViewer)
+
+	res := hit(router, http.MethodPost, "/api/v1/work-orders/9/comments", `{"body":" "}`, "Bearer "+viewerTok)
+	assert.Equal(t, http.StatusBadRequest, res.Code)
+	assert.Contains(t, res.Body.String(), `"code":"invalid_comment"`)
+}
+
 type authStub struct{}
 
 func (authStub) Register(context.Context, user.RegisterInput) (user.User, error) {

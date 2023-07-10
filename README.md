@@ -174,7 +174,7 @@ curl 'http://localhost:8080/api/v1/work-orders/1/comments?limit=20&offset=0' \
 
 ## Maintenance records
 
-Maintenance records are created when a work order is completed. Authenticated users can list them and filter by `work_order_id`, `equipment_id`, `performed_by`, `limit`, and `offset`.
+Maintenance records are created when a work order is completed. Authenticated users can list them and filter by `work_order_id`, `equipment_id`, `performed_by`, `limit`, and `offset`. If the completion flow cannot write the maintenance record, the work-order status and history insert are rolled back together.
 
 ```sh
 curl 'http://localhost:8080/api/v1/maintenance-records?equipment_id=1&limit=20&offset=0' \

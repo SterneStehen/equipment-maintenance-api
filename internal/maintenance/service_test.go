@@ -37,6 +37,18 @@ func TestListCleansFilter(t *testing.T) {
 	assert.Equal(t, int64(4), got.WorkOrderID)
 }
 
+func TestListUsesDefaultLimit(t *testing.T) {
+	var got ListFilter
+	svc := NewService(fakeMaintStore{listFn: func(_ context.Context, flt ListFilter) ([]Record, error) {
+		got = flt
+		return nil, nil
+	}})
+
+	_, err := svc.List(context.Background(), user.Actor{Role: user.RoleViewer}, ListFilter{})
+	require.NoError(t, err)
+	assert.Equal(t, defaultLimit, got.Limit)
+}
+
 func TestListRejectsBadFilterAndRole(t *testing.T) {
 	svc := NewService(fakeMaintStore{})
 

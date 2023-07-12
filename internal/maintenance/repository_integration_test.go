@@ -74,13 +74,13 @@ func seedMaintenanceRows(t *testing.T, ctx context.Context, pool *pgxpool.Pool) 
 		RETURNING id
 	`).Scan(&eqID))
 	require.NoError(t, pool.QueryRow(ctx, `
-		INSERT INTO work_orders (equipment_id, title, status, priority, assigned_to, created_by)
-		VALUES ($1, 'First', 'completed', 'medium', $2, $3)
+		INSERT INTO work_orders (equipment_id, title, status, priority, assigned_to, created_by, completed_at)
+		VALUES ($1, 'First', 'completed', 'medium', $2, $3, NOW())
 		RETURNING id
 	`, eqID, tech, dispatcher).Scan(&firstWO))
 	require.NoError(t, pool.QueryRow(ctx, `
-		INSERT INTO work_orders (equipment_id, title, status, priority, assigned_to, created_by)
-		VALUES ($1, 'Second', 'completed', 'medium', $2, $3)
+		INSERT INTO work_orders (equipment_id, title, status, priority, assigned_to, created_by, completed_at)
+		VALUES ($1, 'Second', 'completed', 'medium', $2, $3, NOW())
 		RETURNING id
 	`, eqID, tech, dispatcher).Scan(&secondWO))
 

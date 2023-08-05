@@ -121,6 +121,7 @@ func TestWorkOrderRepositoryFlow(t *testing.T) {
 	closed, err := svc.Close(ctx, user.Actor{UserID: admin, Role: user.RoleAdmin}, wo.ID, "ok")
 	require.NoError(t, err)
 	assert.Equal(t, StatusClosed, closed.Status)
+	require.NotNil(t, closed.CompletedAt)
 
 	_, err = svc.Start(ctx, user.Actor{UserID: admin, Role: user.RoleAdmin}, wo.ID, "")
 	require.ErrorIs(t, err, ErrTerminalState)

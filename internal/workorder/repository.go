@@ -157,7 +157,11 @@ func (r *Repository) Transition(ctx context.Context, id int64, in TransitionInpu
 		UPDATE work_orders
 		SET status = $2,
 		    updated_at = NOW(),
-		    completed_at = CASE WHEN $2 = 'completed' THEN COALESCE(completed_at, NOW()) ELSE NULL END
+		    completed_at = CASE
+		        WHEN $2 = 'completed' THEN COALESCE(completed_at, NOW())
+		        WHEN $2 = 'closed' THEN completed_at
+		        ELSE NULL
+		    END
 		WHERE id = $1
 		RETURNING id, equipment_id, title, description, status, priority, assigned_to, created_by, created_at, updated_at, completed_at
 	`, id, in.ToStatus))

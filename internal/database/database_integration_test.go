@@ -74,6 +74,52 @@ func TestPostgreSQLPoolAndMigrationLifecycle(t *testing.T) {
 	assertMigrationVersion(t, migrator, 5)
 }
 
+func TestWorkOrderHistoryRollbackKeepsClosedOrdersMigratable(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	pool, err := Open(ctx, Config{URL: databaseURL, MaxConnections: 4, MinConnections: 1})
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer pool.Close()
+
+	migrator := openTestMigrator(t, databaseURL)
+	defer closeTestMigrator(t, migrator)
+	if err := migrator.Down(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		t.Fatalf("reset migrations: %v", err)
+	}
+	if err := migrator.Up(); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	seedClosedWorkOrder(t, ctx, pool)
+
+	if err := migrator.Steps(-2); err != nil {
+		t.Fatalf("roll back comments/history migrations: %v", err)
+	}
+	assertMigrationVersion(t, migrator, 3)
+
+	var status string
+	var completedAt *time.Time
+	if err := pool.QueryRow(ctx, "SELECT status, completed_at FROM work_orders WHERE title = 'Closed before rollback'").Scan(&status, &completedAt); err != nil {
+		t.Fatalf("read rolled back work order: %v", err)
+	}
+	if status != "completed" || completedAt == nil {
+		t.Fatalf("rolled back work order = status %q completed_at %v, want completed with timestamp", status, completedAt)
+	}
+
+	if err := migrator.Up(); err != nil {
+		t.Fatalf("reapply migrations after rollback: %v", err)
+	}
+	assertMigrationVersion(t, migrator, 5)
+}
+
 func openTestMigrator(t *testing.T, databaseURL string) *migrate.Migrate {
 	t.Helper()
 	migrator, err := NewMigrator(databaseURL, "../../migrations")
@@ -81,6 +127,42 @@ func openTestMigrator(t *testing.T, databaseURL string) *migrate.Migrate {
 		t.Fatalf("NewMigrator() error = %v", err)
 	}
 	return migrator
+}
+
+func seedClosedWorkOrder(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	if _, err := pool.Exec(ctx, "TRUNCATE maintenance_records, work_order_comments, work_order_history, work_orders, equipment, users RESTART IDENTITY CASCADE"); err != nil {
+		t.Fatalf("clear tables for closed work order rollback test: %v", err)
+	}
+
+	var userID, equipmentID, workOrderID int64
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO users (email, password_hash, full_name, role)
+		VALUES ('rollback-admin@example.com', 'hash', 'Rollback Admin', 'admin')
+		RETURNING id
+	`).Scan(&userID); err != nil {
+		t.Fatalf("insert rollback user: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO equipment (serial_number, name, status)
+		VALUES ('ROLLBACK-PUMP', 'Rollback Pump', 'active')
+		RETURNING id
+	`).Scan(&equipmentID); err != nil {
+		t.Fatalf("insert rollback equipment: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO work_orders (equipment_id, title, status, priority, created_by, completed_at)
+		VALUES ($1, 'Closed before rollback', 'closed', 'medium', $2, NOW())
+		RETURNING id
+	`, equipmentID, userID).Scan(&workOrderID); err != nil {
+		t.Fatalf("insert closed work order: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO work_order_history (work_order_id, from_status, to_status, actor_id, note)
+		VALUES ($1, 'completed', 'closed', $2, 'done')
+	`, workOrderID, userID); err != nil {
+		t.Fatalf("insert rollback history row: %v", err)
+	}
 }
 
 func closeTestMigrator(t *testing.T, migrator *migrate.Migrate) {

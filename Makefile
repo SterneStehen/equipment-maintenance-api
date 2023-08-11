@@ -7,7 +7,7 @@ TEST_POSTGRES_PORT ?= 55432
 TEST_COMPOSE_PROJECT ?= equipment-maintenance-api-test
 COMPOSE_ENV = POSTGRES_DB="$(POSTGRES_DB)" POSTGRES_USER="$(POSTGRES_USER)" POSTGRES_PASSWORD="$(POSTGRES_PASSWORD)" POSTGRES_PORT="$(POSTGRES_PORT)"
 
-.PHONY: run fmt test test-race test-integration vet check \
+.PHONY: run fmt test test-race test-integration vet check release-check \
 	db-up db-wait db-down db-clean migrate-up migrate-down migrate-version
 
 run:
@@ -40,6 +40,8 @@ vet:
 	go vet ./...
 
 check: fmt test test-race vet
+
+release-check: fmt test test-race vet test-integration
 
 db-up:
 	$(COMPOSE_ENV) docker compose up -d postgres

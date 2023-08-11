@@ -190,6 +190,7 @@ make test-race # run tests with the race detector
 make test-integration # start PostgreSQL and test pool/migrations
 make vet       # run static analysis
 make check     # run all verification commands
+make release-check # run local and clean-db integration checks
 ```
 
 `make test-integration` creates a disposable PostgreSQL instance under a separate Compose project on port `55432`, validates `up → down → up`, and removes its container and volume afterward. Override `TEST_POSTGRES_PORT` if that port is already in use. Never point the integration test at a database containing data that must be preserved because it deliberately exercises rollback.

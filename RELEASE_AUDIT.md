@@ -41,3 +41,13 @@ Direct dependencies checked through `go list -m -json <module>@<version>`:
 | `golang.org/x/crypto` | `v0.0.0-20220722155217-630584e8d5aa` | 2022-07-22 | 1.17 |
 
 No direct dependency requires Go newer than 1.19.
+
+## Clean database verification
+
+`make test-integration` was run against a disposable PostgreSQL 14 container and a fresh Docker volume. It covered:
+
+- migration `up -> down -> up`
+- repository integration tests for users, equipment, work orders, maintenance records
+- the closed-work-order rollback case added during this audit
+
+Result: pass.

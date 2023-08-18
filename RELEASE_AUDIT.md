@@ -51,3 +51,15 @@ No direct dependency requires Go newer than 1.19.
 - the closed-work-order rollback case added during this audit
 
 Result: pass.
+
+## Auth, SQL and pagination review
+
+| area | audit note |
+| --- | --- |
+| Authentication | JWT validation pins HS256, issuer, subject/user id match, non-zero expiry, positive user id, and known role. |
+| Admin authorization | Admin user operations re-read the actor from the database before listing, lookup, or role changes. |
+| Equipment authorization | Route-level and service-level checks restrict writes to admin/dispatcher and decommission to admin. |
+| Work-order authorization | Route-level write restrictions are backed by service checks; transition ownership is enforced for technicians. |
+| Transactions | Initial admin registration, role changes, and work-order transitions use database transactions. Completion, history, and maintenance-record creation are atomic. |
+| SQL | Repository SQL uses parameter placeholders. List endpoints apply deterministic ordering before limit/offset. |
+| Pagination | Equipment, work-order, comment, and maintenance lists default to 20, cap at 100, and clamp negative offsets to 0. |

@@ -63,3 +63,13 @@ Result: pass.
 | Transactions | Initial admin registration, role changes, and work-order transitions use database transactions. Completion, history, and maintenance-record creation are atomic. |
 | SQL | Repository SQL uses parameter placeholders. List endpoints apply deterministic ordering before limit/offset. |
 | Pagination | Equipment, work-order, comment, and maintenance lists default to 20, cap at 100, and clamp negative offsets to 0. |
+
+## Final verification
+
+Final run used Go 1.19.13 from `/tmp/go1.19.13/bin`.
+
+```sh
+PATH=/tmp/go1.19.13/bin:$PATH make release-check
+```
+
+Result: pass.

@@ -8,6 +8,7 @@ import (
 
 	"github.com/SterneStehen/equipment-maintenance-api/internal/apperror"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/auth"
+	"github.com/SterneStehen/equipment-maintenance-api/internal/pagination"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/user"
 	"github.com/gin-gonic/gin"
 )
@@ -113,7 +114,8 @@ func (h *Handler) List(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"work_orders": arr, "limit": flt.Limit, "offset": flt.Offset})
+	pg := pagination.New(flt.Limit, flt.Offset, len(arr))
+	c.JSON(http.StatusOK, gin.H{"work_orders": arr, "limit": pg.Limit, "offset": pg.Offset, "pagination": pg})
 }
 
 func (h *Handler) Update(c *gin.Context) {
@@ -205,7 +207,8 @@ func (h *Handler) ListComments(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"comments": arr, "limit": limit, "offset": offset})
+	pg := pagination.New(limit, offset, len(arr))
+	c.JSON(http.StatusOK, gin.H{"comments": arr, "limit": pg.Limit, "offset": pg.Offset, "pagination": pg})
 }
 
 func (h *Handler) transition(c *gin.Context, fn func(context.Context, user.Actor, int64, string) (WorkOrder, error)) {

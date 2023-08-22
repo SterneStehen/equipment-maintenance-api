@@ -8,6 +8,7 @@ import (
 
 	"github.com/SterneStehen/equipment-maintenance-api/internal/apperror"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/auth"
+	"github.com/SterneStehen/equipment-maintenance-api/internal/pagination"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/user"
 	"github.com/gin-gonic/gin"
 )
@@ -85,7 +86,8 @@ func (h *Handler) List(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"equipment": stuff, "limit": flt.Limit, "offset": flt.Offset})
+	pg := pagination.New(flt.Limit, flt.Offset, len(stuff))
+	c.JSON(http.StatusOK, gin.H{"equipment": stuff, "limit": pg.Limit, "offset": pg.Offset, "pagination": pg})
 }
 
 func (h *Handler) Get(c *gin.Context) {

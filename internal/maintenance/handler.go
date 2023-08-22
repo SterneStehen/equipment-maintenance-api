@@ -8,6 +8,7 @@ import (
 
 	"github.com/SterneStehen/equipment-maintenance-api/internal/apperror"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/auth"
+	"github.com/SterneStehen/equipment-maintenance-api/internal/pagination"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/user"
 	"github.com/gin-gonic/gin"
 )
@@ -38,7 +39,8 @@ func (h *Handler) List(c *gin.Context) {
 		writeErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"maintenance_records": arr, "limit": f.Limit, "offset": f.Offset})
+	pg := pagination.New(f.Limit, f.Offset, len(arr))
+	c.JSON(http.StatusOK, gin.H{"maintenance_records": arr, "limit": pg.Limit, "offset": pg.Offset, "pagination": pg})
 }
 
 func actor(c *gin.Context) (user.Actor, bool) {

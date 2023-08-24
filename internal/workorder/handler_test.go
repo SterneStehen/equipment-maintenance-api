@@ -112,6 +112,7 @@ func TestWorkOrderCreateAndReadRoutes(t *testing.T) {
 	listed := hit(router, http.MethodGet, "/api/v1/work-orders?status=open&priority=high&equipment_id=2&limit=3", "", "Bearer "+viewerTok)
 	require.Equal(t, http.StatusOK, listed.Code)
 	assert.Contains(t, listed.Body.String(), `"work_orders"`)
+	assert.Contains(t, listed.Body.String(), `"pagination"`)
 }
 
 func TestWorkOrderUpdateAndErrors(t *testing.T) {
@@ -225,6 +226,7 @@ func TestWorkOrderCommentsRoutes(t *testing.T) {
 	listed := hit(router, http.MethodGet, "/api/v1/work-orders/9/comments?limit=2&offset=1", "", "Bearer "+viewerTok)
 	require.Equal(t, http.StatusOK, listed.Code)
 	assert.Contains(t, listed.Body.String(), `"comments"`)
+	assert.Contains(t, listed.Body.String(), `"count":1`)
 }
 
 func TestWorkOrderCommentError(t *testing.T) {

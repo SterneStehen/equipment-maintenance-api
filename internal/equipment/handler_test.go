@@ -84,6 +84,8 @@ func TestEquipmentCreateAndReadRoutes(t *testing.T) {
 	listed := hit(router, http.MethodGet, "/api/v1/equipment?status=active&q=pump&limit=2&offset=1", "", "Bearer "+viewerTok)
 	require.Equal(t, http.StatusOK, listed.Code)
 	assert.Contains(t, listed.Body.String(), `"equipment"`)
+	assert.Contains(t, listed.Body.String(), `"pagination"`)
+	assert.Contains(t, listed.Body.String(), `"count":1`)
 
 	found := hit(router, http.MethodGet, "/api/v1/equipment/4", "", "Bearer "+viewerTok)
 	require.Equal(t, http.StatusOK, found.Code)

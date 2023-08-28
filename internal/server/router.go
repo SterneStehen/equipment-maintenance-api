@@ -16,6 +16,7 @@ type Dependencies struct {
 	Auth      *auth.Handler
 	Equipment *equipment.Handler
 	Maint     *maintenance.Handler
+	Ready     *health.ReadyHandler
 	Tokens    *auth.Manager
 	WorkOrder *workorder.Handler
 }
@@ -25,6 +26,9 @@ func NewRouter(deps Dependencies) http.Handler {
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
 	router.GET("/health", health.Check)
+	if deps.Ready != nil {
+		router.GET("/ready", deps.Ready.Check)
+	}
 
 	if deps.Auth != nil && deps.Tokens != nil {
 		v1 := router.Group("/api/v1")

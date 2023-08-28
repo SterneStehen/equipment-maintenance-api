@@ -1,11 +1,14 @@
 package health_test
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/SterneStehen/equipment-maintenance-api/internal/health"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/server"
 )
 
@@ -40,4 +43,41 @@ func TestHealthEndpointRejectsOtherMethods(t *testing.T) {
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("status code = %d, want %d", response.Code, http.StatusNotFound)
 	}
+}
+
+func TestReadyEndpoint(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	response := httptest.NewRecorder()
+
+	server.NewRouter(server.Dependencies{Ready: health.NewReadyHandler(fakePing{})}).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status code = %d, want %d", response.Code, http.StatusOK)
+	}
+	var body map[string]string
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["status"] != "ready" {
+		t.Errorf("status = %q, want ready", body["status"])
+	}
+}
+
+func TestReadyEndpointFailsWhenDatabaseIsDown(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	response := httptest.NewRecorder()
+
+	server.NewRouter(server.Dependencies{Ready: health.NewReadyHandler(fakePing{err: errors.New("no db")})}).ServeHTTP(response, request)
+
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status code = %d, want %d", response.Code, http.StatusServiceUnavailable)
+	}
+}
+
+type fakePing struct {
+	err error
+}
+
+func (f fakePing) Ping(context.Context) error {
+	return f.err
 }

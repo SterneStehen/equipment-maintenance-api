@@ -25,7 +25,7 @@ make migrate-up
 make run
 ```
 
-The application reads the process environment directly; it does not load `.env` files itself. A successful health check returns HTTP 200:
+The application reads the process environment directly; it does not load `.env` files itself. A successful liveness check returns HTTP 200:
 
 ```sh
 curl -i http://localhost:8080/health
@@ -33,6 +33,16 @@ curl -i http://localhost:8080/health
 
 ```json
 {"status":"ok"}
+```
+
+Readiness also pings PostgreSQL:
+
+```sh
+curl -i http://localhost:8080/ready
+```
+
+```json
+{"status":"ready"}
 ```
 
 ## Configuration
@@ -199,4 +209,4 @@ make release-check # run local and clean-db integration checks
 
 The repository uses a domain-oriented layout. `cmd/api` is the executable composition root and `cmd/migrate` is the migration runner. Packages under `internal` separate configuration, database, and HTTP infrastructure from the `user`, `equipment`, `workorder`, and `maintenance` domains. Handlers own HTTP concerns, services will own business rules, and repositories will own parameterized SQL.
 
-The implemented HTTP surface is `GET /health`, auth/user endpoints, administrator role endpoints, authenticated equipment endpoints under `/api/v1/equipment`, authenticated work-order endpoints under `/api/v1/work-orders`, and authenticated maintenance-record listing under `/api/v1/maintenance-records`.
+The implemented HTTP surface is `GET /health`, `GET /ready`, auth/user endpoints, administrator role endpoints, authenticated equipment endpoints under `/api/v1/equipment`, authenticated work-order endpoints under `/api/v1/work-orders`, and authenticated maintenance-record listing under `/api/v1/maintenance-records`.

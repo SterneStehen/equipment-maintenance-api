@@ -237,6 +237,36 @@ func (r *Repository) ListComments(ctx context.Context, workOrderID int64, limit,
 	return arr, nil
 }
 
+func (r *Repository) ListHistory(ctx context.Context, workOrderID int64, limit, offset int) ([]HistoryEntry, error) {
+	if _, err := r.ByID(ctx, workOrderID); err != nil {
+		return nil, err
+	}
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, work_order_id, from_status, to_status, actor_id, note, created_at
+		FROM work_order_history
+		WHERE work_order_id = $1
+		ORDER BY id
+		LIMIT $2 OFFSET $3
+	`, workOrderID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list work order history: %w", err)
+	}
+	defer rows.Close()
+
+	var arr []HistoryEntry
+	for rows.Next() {
+		x, err := scanHistory(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan work order history: %w", err)
+		}
+		arr = append(arr, x)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read work order history: %w", err)
+	}
+	return arr, nil
+}
+
 func transitionPerm(wo WorkOrder, in TransitionInput) error {
 	if in.ActorRole == user.RoleAdmin || in.ActorRole == user.RoleDispatcher {
 		return nil
@@ -300,4 +330,10 @@ func scanComment(row rowish) (Comment, error) {
 	var c Comment
 	err := row.Scan(&c.ID, &c.WorkOrderID, &c.AuthorID, &c.Body, &c.CreatedAt)
 	return c, err
+}
+
+func scanHistory(row rowish) (HistoryEntry, error) {
+	var h HistoryEntry
+	err := row.Scan(&h.ID, &h.WorkOrderID, &h.FromStatus, &h.ToStatus, &h.ActorID, &h.Note, &h.CreatedAt)
+	return h, err
 }

@@ -17,6 +17,7 @@ type fakeStore struct {
 	transitionFn func(context.Context, int64, TransitionInput) (WorkOrder, error)
 	commentFn    func(context.Context, CommentInput) (Comment, error)
 	commentsFn   func(context.Context, int64, int, int) ([]Comment, error)
+	historyFn    func(context.Context, int64, int, int) ([]HistoryEntry, error)
 }
 
 func (f fakeStore) Create(ctx context.Context, in CreateInput) (WorkOrder, error) {
@@ -45,6 +46,10 @@ func (f fakeStore) CreateComment(ctx context.Context, in CommentInput) (Comment,
 
 func (f fakeStore) ListComments(ctx context.Context, id int64, limit, offset int) ([]Comment, error) {
 	return f.commentsFn(ctx, id, limit, offset)
+}
+
+func (f fakeStore) ListHistory(ctx context.Context, id int64, limit, offset int) ([]HistoryEntry, error) {
+	return f.historyFn(ctx, id, limit, offset)
 }
 
 func TestCreateCleansInputAndSetsCreator(t *testing.T) {
@@ -190,4 +195,23 @@ func TestComments(t *testing.T) {
 
 	_, err = svc.ListComments(context.Background(), user.Actor{Role: user.RoleViewer}, 0, 10, 0)
 	require.ErrorIs(t, err, ErrNotFound)
+}
+
+func TestHistory(t *testing.T) {
+	tmp := fakeStore{
+		historyFn: func(_ context.Context, id int64, limit, offset int) ([]HistoryEntry, error) {
+			require.Equal(t, int64(8), id)
+			require.Equal(t, maxLimit, limit)
+			require.Equal(t, 0, offset)
+			return []HistoryEntry{{ID: 1, WorkOrderID: id, ToStatus: StatusInProgress}}, nil
+		},
+	}
+	svc := NewService(tmp)
+
+	arr, err := svc.ListHistory(context.Background(), user.Actor{Role: user.RoleViewer}, 8, 500, -10)
+	require.NoError(t, err)
+	require.Len(t, arr, 1)
+
+	_, err = svc.ListHistory(context.Background(), user.Actor{Role: user.Role("")}, 8, 10, 0)
+	require.ErrorIs(t, err, ErrPermissionDenied)
 }

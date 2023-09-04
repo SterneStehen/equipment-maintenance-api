@@ -20,6 +20,7 @@ type store interface {
 	Transition(ctx context.Context, id int64, in TransitionInput) (WorkOrder, error)
 	CreateComment(ctx context.Context, in CommentInput) (Comment, error)
 	ListComments(ctx context.Context, workOrderID int64, limit, offset int) ([]Comment, error)
+	ListHistory(ctx context.Context, workOrderID int64, limit, offset int) ([]HistoryEntry, error)
 }
 
 type Service struct {
@@ -156,6 +157,17 @@ func (s *Service) ListComments(ctx context.Context, actor user.Actor, id int64, 
 	return s.repo.ListComments(ctx, id, limit, offset)
 }
 
+func (s *Service) ListHistory(ctx context.Context, actor user.Actor, id int64, limit, offset int) ([]HistoryEntry, error) {
+	if !canRead(actor.Role) {
+		return nil, ErrPermissionDenied
+	}
+	if id < 1 {
+		return nil, ErrNotFound
+	}
+	limit, offset = page(limit, offset)
+	return s.repo.ListHistory(ctx, id, limit, offset)
+}
+
 func (s *Service) move(ctx context.Context, actor user.Actor, id int64, to Status, note string) (WorkOrder, error) {
 	if !canRead(actor.Role) {
 		return WorkOrder{}, ErrPermissionDenied
@@ -166,6 +178,19 @@ func (s *Service) move(ctx context.Context, actor user.Actor, id int64, to Statu
 	return s.repo.Transition(ctx, id, TransitionInput{
 		ActorID: actor.UserID, ActorRole: actor.Role, ToStatus: to, Note: trimTo(note, 1000),
 	})
+}
+
+func page(limit, offset int) (int, int) {
+	if limit <= 0 {
+		limit = defaultLimit
+	}
+	if limit > maxLimit {
+		limit = maxLimit
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return limit, offset
 }
 
 func cleanCreate(in CreateInput) (CreateInput, error) {

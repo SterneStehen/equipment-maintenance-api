@@ -24,6 +24,7 @@ type svc interface {
 	Cancel(ctx context.Context, actor user.Actor, id int64, note string) (WorkOrder, error)
 	AddComment(ctx context.Context, actor user.Actor, id int64, body string) (Comment, error)
 	ListComments(ctx context.Context, actor user.Actor, id int64, limit, offset int) ([]Comment, error)
+	ListHistory(ctx context.Context, actor user.Actor, id int64, limit, offset int) ([]HistoryEntry, error)
 }
 
 type Handler struct {
@@ -209,6 +210,32 @@ func (h *Handler) ListComments(c *gin.Context) {
 	}
 	pg := pagination.New(limit, offset, len(arr))
 	c.JSON(http.StatusOK, gin.H{"comments": arr, "limit": pg.Limit, "offset": pg.Offset, "pagination": pg})
+}
+
+func (h *Handler) ListHistory(c *gin.Context) {
+	who, ok := actor(c)
+	if !ok {
+		return
+	}
+	id, ok := idFromPath(c)
+	if !ok {
+		return
+	}
+	limit, ok := intQuery(c, "limit", 0)
+	if !ok {
+		return
+	}
+	offset, ok := intQuery(c, "offset", 0)
+	if !ok {
+		return
+	}
+	arr, err := h.svc.ListHistory(c.Request.Context(), who, id, limit, offset)
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	pg := pagination.New(limit, offset, len(arr))
+	c.JSON(http.StatusOK, gin.H{"history": arr, "limit": pg.Limit, "offset": pg.Offset, "pagination": pg})
 }
 
 func (h *Handler) transition(c *gin.Context, fn func(context.Context, user.Actor, int64, string) (WorkOrder, error)) {

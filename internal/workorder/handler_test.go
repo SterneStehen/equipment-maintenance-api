@@ -28,6 +28,7 @@ type fakeWO struct {
 	cancelFn   func(context.Context, user.Actor, int64, string) (workorder.WorkOrder, error)
 	commentFn  func(context.Context, user.Actor, int64, string) (workorder.Comment, error)
 	commentsFn func(context.Context, user.Actor, int64, int, int) ([]workorder.Comment, error)
+	historyFn  func(context.Context, user.Actor, int64, int, int) ([]workorder.HistoryEntry, error)
 }
 
 func (f fakeWO) Create(ctx context.Context, a user.Actor, in workorder.CreateInput) (workorder.WorkOrder, error) {
@@ -68,6 +69,10 @@ func (f fakeWO) AddComment(ctx context.Context, a user.Actor, id int64, body str
 
 func (f fakeWO) ListComments(ctx context.Context, a user.Actor, id int64, limit, offset int) ([]workorder.Comment, error) {
 	return f.commentsFn(ctx, a, id, limit, offset)
+}
+
+func (f fakeWO) ListHistory(ctx context.Context, a user.Actor, id int64, limit, offset int) ([]workorder.HistoryEntry, error) {
+	return f.historyFn(ctx, a, id, limit, offset)
 }
 
 func TestWorkOrderCreateAndReadRoutes(t *testing.T) {
@@ -241,6 +246,25 @@ func TestWorkOrderCommentError(t *testing.T) {
 	res := hit(router, http.MethodPost, "/api/v1/work-orders/9/comments", `{"body":" "}`, "Bearer "+viewerTok)
 	assert.Equal(t, http.StatusBadRequest, res.Code)
 	assert.Contains(t, res.Body.String(), `"code":"invalid_comment"`)
+}
+
+func TestWorkOrderHistoryRoute(t *testing.T) {
+	api := fakeWO{
+		historyFn: func(_ context.Context, a user.Actor, id int64, limit, offset int) ([]workorder.HistoryEntry, error) {
+			require.Equal(t, user.RoleViewer, a.Role)
+			require.Equal(t, int64(9), id)
+			require.Equal(t, 4, limit)
+			require.Equal(t, 2, offset)
+			return []workorder.HistoryEntry{{ID: 1, WorkOrderID: id, ToStatus: workorder.StatusInProgress}}, nil
+		},
+	}
+	router, secret := woRouter(api)
+	viewerTok := token(t, secret, user.RoleViewer)
+
+	res := hit(router, http.MethodGet, "/api/v1/work-orders/9/history?limit=4&offset=2", "", "Bearer "+viewerTok)
+	require.Equal(t, http.StatusOK, res.Code)
+	assert.Contains(t, res.Body.String(), `"history"`)
+	assert.Contains(t, res.Body.String(), `"to_status":"in_progress"`)
 }
 
 type authStub struct{}

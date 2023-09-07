@@ -67,6 +67,7 @@ func NewRouter(deps Dependencies) http.Handler {
 			protected.POST("/work-orders/:id/cancel", deps.WorkOrder.Cancel)
 			protected.GET("/work-orders/:id/comments", deps.WorkOrder.ListComments)
 			protected.POST("/work-orders/:id/comments", deps.WorkOrder.AddComment)
+			protected.GET("/work-orders/:id/history", deps.WorkOrder.ListHistory)
 		}
 		if deps.Maint != nil {
 			protected.GET("/maintenance-records", deps.Maint.List)

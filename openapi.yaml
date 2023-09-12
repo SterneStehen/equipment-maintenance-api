@@ -1,0 +1,340 @@
+openapi: 3.0.3
+info:
+  title: Equipment Maintenance API
+  version: 0.1.0
+  description: API for equipment, users, work orders, comments, history, and maintenance records.
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      security: []
+      summary: Liveness check
+      responses:
+        "200":
+          description: Service is alive
+  /ready:
+    get:
+      security: []
+      summary: Readiness check
+      responses:
+        "200":
+          description: Database is reachable
+        "503":
+          description: Database is not ready
+  /api/v1/auth/register:
+    post:
+      security: []
+      summary: Register a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: User registered
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/auth/login:
+    post:
+      security: []
+      summary: Login and issue a JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login succeeded
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/users/me:
+    get:
+      summary: Current user
+      responses:
+        "200":
+          description: Current user
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/admin/users:
+    get:
+      summary: List users
+      responses:
+        "200":
+          description: Users
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/equipment:
+    get:
+      summary: List equipment
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/EquipmentStatus"
+        - name: q
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Equipment page
+    post:
+      summary: Create equipment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EquipmentCreate"
+      responses:
+        "201":
+          description: Equipment created
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/equipment/{id}:
+    get:
+      summary: Get equipment
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200":
+          description: Equipment
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      summary: Update equipment
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200":
+          description: Equipment updated
+    delete:
+      summary: Physical delete is not supported
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "405":
+          description: Use decommission instead
+  /api/v1/equipment/{id}/decommission:
+    post:
+      summary: Decommission equipment
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200":
+          description: Equipment decommissioned
+  /api/v1/work-orders:
+    get:
+      summary: List work orders
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/WorkOrderStatus"
+        - name: priority
+          in: query
+          schema:
+            $ref: "#/components/schemas/Priority"
+        - name: equipment_id
+          in: query
+          schema:
+            type: integer
+        - name: assigned_to
+          in: query
+          schema:
+            type: integer
+        - name: q
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Work-order page
+    post:
+      summary: Create work order
+      responses:
+        "201":
+          description: Work order created
+  /api/v1/work-orders/{id}:
+    get:
+      summary: Get work order
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200":
+          description: Work order
+    patch:
+      summary: Update work order
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200":
+          description: Work order updated
+  /api/v1/work-orders/{id}/history:
+    get:
+      summary: List work-order transition history
+      parameters:
+        - $ref: "#/components/parameters/ID"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Work-order history
+  /api/v1/work-orders/{id}/comments:
+    get:
+      summary: List work-order comments
+      parameters:
+        - $ref: "#/components/parameters/ID"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Comments
+    post:
+      summary: Add work-order comment
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "201":
+          description: Comment created
+  /api/v1/maintenance-records:
+    get:
+      summary: List maintenance records
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - name: work_order_id
+          in: query
+          schema:
+            type: integer
+        - name: equipment_id
+          in: query
+          schema:
+            type: integer
+        - name: performed_by
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Maintenance records
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    ID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 20
+        maximum: 100
+    Offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        default: 0
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Unauthorized:
+      description: Missing or invalid authentication
+    Forbidden:
+      description: Permission denied
+    Conflict:
+      description: Conflict
+    NotFound:
+      description: Resource not found
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [email, password, full_name]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          maxLength: 72
+        full_name:
+          type: string
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+    EquipmentCreate:
+      type: object
+      required: [serial_number, name]
+      properties:
+        serial_number:
+          type: string
+        name:
+          type: string
+        model:
+          type: string
+        location:
+          type: string
+        notes:
+          type: string
+    EquipmentStatus:
+      type: string
+      enum: [active, maintenance, decommissioned]
+    WorkOrderStatus:
+      type: string
+      enum: [open, in_progress, completed, closed, canceled]
+    Priority:
+      type: string
+      enum: [low, medium, high, urgent]
+    Pagination:
+      type: object
+      properties:
+        limit:
+          type: integer
+        offset:
+          type: integer
+        count:
+          type: integer
+        next_offset:
+          type: integer
+    ErrorEnvelope:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string

@@ -205,6 +205,10 @@ make release-check # run local and clean-db integration checks
 
 `make test-integration` creates a disposable PostgreSQL instance under a separate Compose project on port `55432`, validates `up → down → up`, and removes its container and volume afterward. Override `TEST_POSTGRES_PORT` if that port is already in use. Never point the integration test at a database containing data that must be preserved because it deliberately exercises rollback.
 
+## API specification
+
+The repository includes a hand-maintained OpenAPI 3.0 spec in `openapi.yaml`.
+
 ## Architecture
 
 The repository uses a domain-oriented layout. `cmd/api` is the executable composition root and `cmd/migrate` is the migration runner. Packages under `internal` separate configuration, database, and HTTP infrastructure from the `user`, `equipment`, `workorder`, and `maintenance` domains. Handlers own HTTP concerns, services will own business rules, and repositories will own parameterized SQL.

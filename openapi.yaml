@@ -193,6 +193,38 @@ paths:
       responses:
         "200":
           description: Work-order history
+  /api/v1/work-orders/{id}/start:
+    post:
+      summary: Start a work order
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200":
+          description: Work order started
+  /api/v1/work-orders/{id}/complete:
+    post:
+      summary: Complete a work order
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200":
+          description: Work order completed
+  /api/v1/work-orders/{id}/close:
+    post:
+      summary: Close a completed work order
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200":
+          description: Work order closed
+  /api/v1/work-orders/{id}/cancel:
+    post:
+      summary: Cancel a work order
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200":
+          description: Work order canceled
   /api/v1/work-orders/{id}/comments:
     get:
       summary: List work-order comments

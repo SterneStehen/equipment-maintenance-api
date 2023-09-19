@@ -7,6 +7,7 @@ import (
 	"github.com/SterneStehen/equipment-maintenance-api/internal/equipment"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/health"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/maintenance"
+	appmiddleware "github.com/SterneStehen/equipment-maintenance-api/internal/middleware"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/user"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/workorder"
 	"github.com/gin-gonic/gin"
@@ -24,7 +25,7 @@ type Dependencies struct {
 func NewRouter(deps Dependencies) http.Handler {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
-	router.Use(gin.Logger(), gin.Recovery())
+	router.Use(appmiddleware.RequestID(), gin.Logger(), gin.Recovery())
 	router.GET("/health", health.Check)
 	if deps.Ready != nil {
 		router.GET("/ready", deps.Ready.Check)

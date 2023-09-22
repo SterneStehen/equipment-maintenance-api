@@ -62,6 +62,7 @@ func run(logger *log.Logger) error {
 	router := server.NewRouter(server.Dependencies{
 		Auth:      authHandler,
 		Equipment: equipmentHandler,
+		Logger:    logger,
 		Maint:     maintenanceHandler,
 		Ready:     health.NewReadyHandler(pool),
 		Tokens:    tokens,

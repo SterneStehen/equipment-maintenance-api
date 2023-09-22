@@ -1,6 +1,7 @@
 package server
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/SterneStehen/equipment-maintenance-api/internal/auth"
@@ -18,6 +19,7 @@ type Dependencies struct {
 	Equipment *equipment.Handler
 	Maint     *maintenance.Handler
 	Ready     *health.ReadyHandler
+	Logger    *log.Logger
 	Tokens    *auth.Manager
 	WorkOrder *workorder.Handler
 }
@@ -25,7 +27,7 @@ type Dependencies struct {
 func NewRouter(deps Dependencies) http.Handler {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
-	router.Use(appmiddleware.RequestID(), gin.Logger(), gin.Recovery())
+	router.Use(appmiddleware.RequestID(), appmiddleware.JSONLogger(deps.Logger), gin.Recovery())
 	router.GET("/health", health.Check)
 	if deps.Ready != nil {
 		router.GET("/ready", deps.Ready.Check)

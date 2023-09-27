@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -10,6 +12,10 @@ import (
 )
 
 const principalKey = "auth.principal"
+
+type UserFinder interface {
+	ByID(ctx context.Context, id int64) (user.User, error)
+}
 
 func (m *Manager) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -28,6 +34,34 @@ func (m *Manager) Middleware() gin.HandlerFunc {
 			return
 		}
 		c.Set(principalKey, who)
+		c.Next()
+	}
+}
+
+func FreshUser(users UserFinder) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if users == nil {
+			c.Next()
+			return
+		}
+		p, ok := Current(c)
+		if !ok {
+			apperror.Write(c, http.StatusUnauthorized, "unauthorized", "Authentication is required")
+			c.Abort()
+			return
+		}
+		usr, err := users.ByID(c.Request.Context(), p.UserID)
+		if errors.Is(err, user.ErrNotFound) {
+			apperror.Write(c, http.StatusUnauthorized, "unauthorized", "Authenticated user no longer exists")
+			c.Abort()
+			return
+		}
+		if err != nil {
+			apperror.Write(c, http.StatusInternalServerError, "internal_error", "Could not refresh authenticated user")
+			c.Abort()
+			return
+		}
+		c.Set(principalKey, Principal{UserID: usr.ID, Role: usr.Role})
 		c.Next()
 	}
 }

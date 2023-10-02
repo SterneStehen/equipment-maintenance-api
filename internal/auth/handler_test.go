@@ -146,6 +146,31 @@ func TestAdminRoutesPermissionMatrix(t *testing.T) {
 	assert.NotContains(t, ok.Body.String(), "stored-password-hash")
 }
 
+func TestAdminRouteUsesFreshRoleFromDatabase(t *testing.T) {
+	admin := sampleUser()
+	admin.Role = user.RoleAdmin
+	admin.ID = 7
+	users := fakeUsers{
+		byIDFn: func(context.Context, int64) (user.User, error) {
+			return admin, nil
+		},
+		listFn: func(_ context.Context, actor user.Actor) ([]user.User, error) {
+			require.Equal(t, user.RoleAdmin, actor.Role)
+			return []user.User{admin}, nil
+		},
+	}
+	secret := "handler-test-secret-never-return-this"
+	tokens := auth.NewManager(secret, 15*time.Minute)
+	h := auth.NewHandler(users, tokens)
+	router := server.NewRouter(server.Dependencies{Auth: h, Tokens: tokens, Users: users})
+	staleToken := tokenFor(t, secret, user.User{ID: admin.ID, Role: user.RoleViewer})
+
+	res := perform(router, http.MethodGet, "/api/v1/admin/users", "", "Bearer "+staleToken)
+
+	require.Equal(t, http.StatusOK, res.Code)
+	assert.Contains(t, res.Body.String(), `"role":"admin"`)
+}
+
 func TestAdminLookupAndRoleUpdate(t *testing.T) {
 	admin := sampleUser()
 	admin.ID = 1

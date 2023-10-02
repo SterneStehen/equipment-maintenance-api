@@ -21,6 +21,7 @@ type Dependencies struct {
 	Ready     *health.ReadyHandler
 	Logger    *log.Logger
 	Tokens    *auth.Manager
+	Users     auth.UserFinder
 	WorkOrder *workorder.Handler
 }
 
@@ -37,7 +38,7 @@ func NewRouter(deps Dependencies) http.Handler {
 		v1 := router.Group("/api/v1")
 		v1.POST("/auth/register", deps.Auth.Register)
 		v1.POST("/auth/login", deps.Auth.Login)
-		protected := v1.Group("", deps.Tokens.Middleware())
+		protected := v1.Group("", deps.Tokens.Middleware(), auth.FreshUser(deps.Users))
 		protected.GET("/users/me", deps.Auth.Me)
 
 		admins := protected.Group("", auth.RequireRole(user.RoleAdmin))

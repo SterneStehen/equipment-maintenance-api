@@ -66,6 +66,7 @@ func run(logger *log.Logger) error {
 		Maint:     maintenanceHandler,
 		Ready:     health.NewReadyHandler(pool),
 		Tokens:    tokens,
+		Users:     users,
 		WorkOrder: workOrderHandler,
 	})
 

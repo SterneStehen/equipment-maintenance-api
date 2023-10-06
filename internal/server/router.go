@@ -3,6 +3,7 @@ package server
 import (
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/SterneStehen/equipment-maintenance-api/internal/auth"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/equipment"
@@ -36,8 +37,9 @@ func NewRouter(deps Dependencies) http.Handler {
 
 	if deps.Auth != nil && deps.Tokens != nil {
 		v1 := router.Group("/api/v1")
-		v1.POST("/auth/register", deps.Auth.Register)
-		v1.POST("/auth/login", deps.Auth.Login)
+		authLimit := appmiddleware.RateLimit(10, time.Minute)
+		v1.POST("/auth/register", authLimit, deps.Auth.Register)
+		v1.POST("/auth/login", authLimit, deps.Auth.Login)
 		protected := v1.Group("", deps.Tokens.Middleware(), auth.FreshUser(deps.Users))
 		protected.GET("/users/me", deps.Auth.Me)
 

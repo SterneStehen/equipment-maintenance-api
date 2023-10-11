@@ -263,6 +263,22 @@ func TestAuthHandlerErrors(t *testing.T) {
 	}
 }
 
+func TestLoginRateLimit(t *testing.T) {
+	users := fakeUsers{authenticateFn: func(context.Context, string, string) (user.User, error) {
+		return user.User{}, user.ErrInvalidCredentials
+	}}
+	router, _ := testRouter(users)
+
+	var res *httptest.ResponseRecorder
+	for i := 0; i < 11; i++ {
+		res = perform(router, http.MethodPost, "/api/v1/auth/login", `{"email":"p@example.com","password":"password1"}`, "")
+	}
+
+	require.NotNil(t, res)
+	assert.Equal(t, http.StatusTooManyRequests, res.Code)
+	assert.Contains(t, res.Body.String(), `"code":"rate_limited"`)
+}
+
 func testRouter(users fakeUsers) (http.Handler, string) {
 	secret := "handler-test-secret-never-return-this"
 	tokens := auth.NewManager(secret, 15*time.Minute)

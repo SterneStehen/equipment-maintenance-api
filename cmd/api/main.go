@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/SterneStehen/equipment-maintenance-api/internal/audit"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/auth"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/config"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/database"
@@ -50,10 +51,11 @@ func run(logger *log.Logger) error {
 	defer pool.Close()
 	logger.Print("database connection ready")
 
-	users := user.NewService(user.NewRepository(pool))
+	auditRepo := audit.NewRepository(pool)
+	users := user.NewServiceWithAudit(user.NewRepository(pool), auditRepo)
 	tokens := auth.NewManager(cfg.JWTSecret, cfg.JWTTTL)
 	authHandler := auth.NewHandler(users, tokens)
-	equipmentSvc := equipment.NewService(equipment.NewRepository(pool))
+	equipmentSvc := equipment.NewServiceWithAudit(equipment.NewRepository(pool), auditRepo)
 	equipmentHandler := equipment.NewHandler(equipmentSvc)
 	workOrders := workorder.NewService(workorder.NewRepository(pool))
 	workOrderHandler := workorder.NewHandler(workOrders)

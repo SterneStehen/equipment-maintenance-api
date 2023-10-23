@@ -50,13 +50,14 @@ func TestPostgreSQLPoolAndMigrationLifecycle(t *testing.T) {
 	if err := migrator.Up(); err != nil {
 		t.Fatalf("apply migrations: %v", err)
 	}
-	assertMigrationVersion(t, migrator, 5)
+	assertMigrationVersion(t, migrator, 6)
 	assertUsersConstraints(t, ctx, pool)
 	assertEquipmentConstraints(t, ctx, pool)
 	assertWorkOrderConstraints(t, ctx, pool)
 	assertWorkOrderHistoryConstraints(t, ctx, pool)
 	assertCommentConstraints(t, ctx, pool)
 	assertMaintenanceRecordConstraints(t, ctx, pool)
+	assertAuditEventConstraints(t, ctx, pool)
 
 	if err := migrator.Down(); err != nil {
 		t.Fatalf("roll back migrations: %v", err)
@@ -67,11 +68,12 @@ func TestPostgreSQLPoolAndMigrationLifecycle(t *testing.T) {
 	assertWorkOrderHistoryTableMissing(t, ctx, pool)
 	assertWorkOrderCommentsTableMissing(t, ctx, pool)
 	assertMaintenanceRecordsTableMissing(t, ctx, pool)
+	assertAuditEventsTableMissing(t, ctx, pool)
 
 	if err := migrator.Up(); err != nil {
 		t.Fatalf("reapply migrations: %v", err)
 	}
-	assertMigrationVersion(t, migrator, 5)
+	assertMigrationVersion(t, migrator, 6)
 }
 
 func TestWorkOrderHistoryRollbackKeepsClosedOrdersMigratable(t *testing.T) {
@@ -100,8 +102,8 @@ func TestWorkOrderHistoryRollbackKeepsClosedOrdersMigratable(t *testing.T) {
 
 	seedClosedWorkOrder(t, ctx, pool)
 
-	if err := migrator.Steps(-2); err != nil {
-		t.Fatalf("roll back comments/history migrations: %v", err)
+	if err := migrator.Steps(-3); err != nil {
+		t.Fatalf("roll back audit/comments/history migrations: %v", err)
 	}
 	assertMigrationVersion(t, migrator, 3)
 
@@ -117,7 +119,7 @@ func TestWorkOrderHistoryRollbackKeepsClosedOrdersMigratable(t *testing.T) {
 	if err := migrator.Up(); err != nil {
 		t.Fatalf("reapply migrations after rollback: %v", err)
 	}
-	assertMigrationVersion(t, migrator, 5)
+	assertMigrationVersion(t, migrator, 6)
 }
 
 func openTestMigrator(t *testing.T, databaseURL string) *migrate.Migrate {
@@ -391,6 +393,35 @@ func assertMaintenanceRecordConstraints(t *testing.T, ctx context.Context, pool 
 	}
 }
 
+func assertAuditEventConstraints(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	var cols int
+	if err := pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM information_schema.columns
+		WHERE table_schema = 'public'
+		  AND table_name = 'audit_events'
+		  AND column_name IN ('id', 'actor_id', 'action', 'target_type', 'target_id', 'details', 'created_at')
+	`).Scan(&cols); err != nil {
+		t.Fatalf("inspect audit_events columns: %v", err)
+	}
+	if cols != 7 {
+		t.Fatalf("audit_events expected column count = %d, want 7", cols)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO audit_events (actor_id, action, target_type, target_id, details)
+		VALUES (1, 'test.action', 'user', 1, 'ok')
+	`); err != nil {
+		t.Fatalf("insert valid audit event: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO audit_events (actor_id, action, target_type)
+		VALUES (1, '', 'user')
+	`); err == nil {
+		t.Fatal("blank audit action was accepted")
+	}
+}
+
 func assertUsersTableMissing(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	t.Helper()
 	var tableName *string
@@ -454,5 +485,16 @@ func assertMaintenanceRecordsTableMissing(t *testing.T, ctx context.Context, poo
 	}
 	if tableName != nil {
 		t.Fatalf("maintenance_records table still exists after rollback: %s", *tableName)
+	}
+}
+
+func assertAuditEventsTableMissing(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	var tableName *string
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.audit_events')::text").Scan(&tableName); err != nil {
+		t.Fatalf("check audit_events table after rollback: %v", err)
+	}
+	if tableName != nil {
+		t.Fatalf("audit_events table still exists after rollback: %s", *tableName)
 	}
 }

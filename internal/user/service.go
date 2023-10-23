@@ -6,6 +6,7 @@ import (
 	"net/mail"
 	"strings"
 
+	"github.com/SterneStehen/equipment-maintenance-api/internal/audit"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -36,8 +37,9 @@ func (b bcryptPass) Matches(hash, password string) bool {
 }
 
 type Service struct {
-	repo store
-	pass passOps
+	repo  store
+	pass  passOps
+	audit audit.Recorder
 }
 
 type RegisterInput struct {
@@ -53,6 +55,12 @@ type Actor struct {
 
 func NewService(repo store) *Service {
 	return &Service{repo: repo, pass: bcryptPass{cost: bcrypt.DefaultCost}}
+}
+
+func NewServiceWithAudit(repo store, rec audit.Recorder) *Service {
+	s := NewService(repo)
+	s.audit = rec
+	return s
 }
 
 func (s *Service) Register(ctx context.Context, in RegisterInput) (User, error) {
@@ -126,7 +134,16 @@ func (s *Service) AssignRole(ctx context.Context, actor Actor, id int64, role Ro
 	if !role.Valid() {
 		return User{}, ErrInvalidRole
 	}
-	return s.repo.UpdateRole(ctx, id, role)
+	usr, err := s.repo.UpdateRole(ctx, id, role)
+	if err != nil {
+		return User{}, err
+	}
+	if s.audit != nil {
+		_ = s.audit.Record(ctx, audit.EventInput{
+			ActorID: actor.UserID, Action: "user.role_changed", Target: "user", TargetID: id, Details: "role=" + string(role),
+		})
+	}
+	return usr, nil
 }
 
 func (s *Service) needAdmin(ctx context.Context, a Actor) error {

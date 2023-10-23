@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/SterneStehen/equipment-maintenance-api/internal/audit"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/user"
 )
 
@@ -21,7 +22,8 @@ type store interface {
 }
 
 type Service struct {
-	repo store
+	repo  store
+	audit audit.Recorder
 }
 
 type CreateInput struct {
@@ -42,6 +44,10 @@ type UpdateInput struct {
 
 func NewService(repo store) *Service {
 	return &Service{repo: repo}
+}
+
+func NewServiceWithAudit(repo store, rec audit.Recorder) *Service {
+	return &Service{repo: repo, audit: rec}
 }
 
 func (s *Service) Create(ctx context.Context, actor user.Actor, in CreateInput) (Equipment, error) {
@@ -99,7 +105,16 @@ func (s *Service) Decommission(ctx context.Context, actor user.Actor, id int64) 
 	if id < 1 {
 		return Equipment{}, ErrNotFound
 	}
-	return s.repo.Decommission(ctx, id)
+	x, err := s.repo.Decommission(ctx, id)
+	if err != nil {
+		return Equipment{}, err
+	}
+	if s.audit != nil {
+		_ = s.audit.Record(ctx, audit.EventInput{
+			ActorID: actor.UserID, Action: "equipment.decommissioned", Target: "equipment", TargetID: id,
+		})
+	}
+	return x, nil
 }
 
 func cleanCreate(in CreateInput) (CreateInput, error) {

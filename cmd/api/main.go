@@ -57,7 +57,7 @@ func run(logger *log.Logger) error {
 	authHandler := auth.NewHandler(users, tokens)
 	equipmentSvc := equipment.NewServiceWithAudit(equipment.NewRepository(pool), auditRepo)
 	equipmentHandler := equipment.NewHandler(equipmentSvc)
-	workOrders := workorder.NewService(workorder.NewRepository(pool))
+	workOrders := workorder.NewServiceWithAudit(workorder.NewRepository(pool), auditRepo)
 	workOrderHandler := workorder.NewHandler(workOrders)
 	maintenanceSvc := maintenance.NewService(maintenance.NewRepository(pool))
 	maintenanceHandler := maintenance.NewHandler(maintenanceSvc)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/SterneStehen/equipment-maintenance-api/internal/audit"
 	"github.com/SterneStehen/equipment-maintenance-api/internal/user"
 )
 
@@ -24,7 +25,8 @@ type store interface {
 }
 
 type Service struct {
-	repo store
+	repo  store
+	audit audit.Recorder
 }
 
 type CreateInput struct {
@@ -61,6 +63,10 @@ func NewService(repo store) *Service {
 	return &Service{repo: repo}
 }
 
+func NewServiceWithAudit(repo store, rec audit.Recorder) *Service {
+	return &Service{repo: repo, audit: rec}
+}
+
 func (s *Service) Create(ctx context.Context, actor user.Actor, in CreateInput) (WorkOrder, error) {
 	if !canWrite(actor.Role) {
 		return WorkOrder{}, ErrPermissionDenied
@@ -70,7 +76,12 @@ func (s *Service) Create(ctx context.Context, actor user.Actor, in CreateInput) 
 		return WorkOrder{}, err
 	}
 	x.CreatedBy = actor.UserID
-	return s.repo.Create(ctx, x)
+	wo, err := s.repo.Create(ctx, x)
+	if err != nil {
+		return WorkOrder{}, err
+	}
+	s.record(ctx, actor.UserID, "work_order.created", "work_order", wo.ID, "")
+	return wo, nil
 }
 
 func (s *Service) ByID(ctx context.Context, actor user.Actor, id int64) (WorkOrder, error) {
@@ -135,7 +146,12 @@ func (s *Service) AddComment(ctx context.Context, actor user.Actor, id int64, bo
 	if txt == "" {
 		return Comment{}, ErrInvalidComment
 	}
-	return s.repo.CreateComment(ctx, CommentInput{WorkOrderID: id, AuthorID: actor.UserID, Body: txt})
+	c, err := s.repo.CreateComment(ctx, CommentInput{WorkOrderID: id, AuthorID: actor.UserID, Body: txt})
+	if err != nil {
+		return Comment{}, err
+	}
+	s.record(ctx, actor.UserID, "work_order.commented", "work_order", id, "")
+	return c, nil
 }
 
 func (s *Service) ListComments(ctx context.Context, actor user.Actor, id int64, limit, offset int) ([]Comment, error) {
@@ -175,9 +191,14 @@ func (s *Service) move(ctx context.Context, actor user.Actor, id int64, to Statu
 	if id < 1 {
 		return WorkOrder{}, ErrNotFound
 	}
-	return s.repo.Transition(ctx, id, TransitionInput{
+	wo, err := s.repo.Transition(ctx, id, TransitionInput{
 		ActorID: actor.UserID, ActorRole: actor.Role, ToStatus: to, Note: trimTo(note, 1000),
 	})
+	if err != nil {
+		return WorkOrder{}, err
+	}
+	s.record(ctx, actor.UserID, "work_order.transitioned", "work_order", id, "to="+string(to))
+	return wo, nil
 }
 
 func page(limit, offset int) (int, int) {
@@ -283,4 +304,13 @@ func canRead(role user.Role) bool {
 
 func canWrite(role user.Role) bool {
 	return role == user.RoleAdmin || role == user.RoleDispatcher
+}
+
+func (s *Service) record(ctx context.Context, actorID int64, action, target string, targetID int64, details string) {
+	if s.audit == nil {
+		return
+	}
+	_ = s.audit.Record(ctx, audit.EventInput{
+		ActorID: actorID, Action: action, Target: target, TargetID: targetID, Details: details,
+	})
 }

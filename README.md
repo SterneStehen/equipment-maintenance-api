@@ -74,13 +74,15 @@ make db-clean       # stop PostgreSQL and remove local database data
 
 Migration files live in `migrations/` as matching, sequentially numbered `.up.sql` and `.down.sql` files. Migrations are explicit SQL and each multi-statement migration is transaction-wrapped. Apply migrations explicitly before starting a newly deployed application version; the API does not mutate its schema automatically.
 
-The first migration creates `users` with normalized unique email, role and non-empty value constraints, timezone-aware timestamps, and a role index. The second migration creates `equipment` with normalized unique serial numbers, status constraints, timestamps, and decommission tracking. The third migration creates `work_orders` with equipment/user references, status and priority constraints, assignee tracking, and completion timestamps. The fourth migration stores work-order transition history. The fifth adds work-order comments and one maintenance record per completed work order. Rollback drops the matching table for each migration.
+The first migration creates `users` with normalized unique email, role and non-empty value constraints, timezone-aware timestamps, and a role index. The second migration creates `equipment` with normalized unique serial numbers, status constraints, timestamps, and decommission tracking. The third migration creates `work_orders` with equipment/user references, status and priority constraints, assignee tracking, and completion timestamps. The fourth migration stores work-order transition history. The fifth adds work-order comments and one maintenance record per completed work order. The sixth creates `audit_events` for important role, equipment, and work-order actions. Rollback drops the matching table for each migration.
 
 ## Users and authentication
 
 Public registration never accepts a role. The first committed registration becomes `admin`; PostgreSQL serializes the empty-table decision so concurrent requests cannot create multiple initial administrators. Every later registration receives `viewer`.
 
 Passwords must contain 8 to 72 bytes. Emails are trimmed and lowercased before lookup and storage, while passwords are stored only as bcrypt hashes. Login returns an HS256 JWT using `JWT_SECRET` and `JWT_TTL`. Password hashes and the signing secret are excluded from API responses.
+
+Register and login endpoints have a small in-memory per-IP rate limit. Protected routes refresh the current user role from PostgreSQL after JWT validation so old tokens do not keep old permissions after a role change.
 
 ```sh
 curl -X POST http://localhost:8080/api/v1/auth/register \
@@ -214,3 +216,5 @@ The repository includes a hand-maintained OpenAPI 3.0 spec in `openapi.yaml`.
 The repository uses a domain-oriented layout. `cmd/api` is the executable composition root and `cmd/migrate` is the migration runner. Packages under `internal` separate configuration, database, and HTTP infrastructure from the `user`, `equipment`, `workorder`, and `maintenance` domains. Handlers own HTTP concerns, services will own business rules, and repositories will own parameterized SQL.
 
 The implemented HTTP surface is `GET /health`, `GET /ready`, auth/user endpoints, administrator role endpoints, authenticated equipment endpoints under `/api/v1/equipment`, authenticated work-order endpoints under `/api/v1/work-orders`, and authenticated maintenance-record listing under `/api/v1/maintenance-records`.
+
+Every request receives an `X-Request-ID` response header. HTTP access logs are written as JSON and include the request id, method, path, status, latency, and client IP. Audit events are stored internally for role changes, equipment decommissioning, and work-order create/comment/transition operations.

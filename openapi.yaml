@@ -304,6 +304,8 @@ components:
       description: Conflict
     NotFound:
       description: Resource not found
+    RateLimited:
+      description: Too many requests
   schemas:
     RegisterRequest:
       type: object

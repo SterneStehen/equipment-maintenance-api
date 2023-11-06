@@ -34,7 +34,7 @@ test-integration:
 		sleep 1; \
 	done; \
 	if [ "$$ready" != true ]; then docker compose -p "$(TEST_COMPOSE_PROJECT)" logs postgres; exit 1; fi; \
-	TEST_DATABASE_URL="postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@127.0.0.1:$(TEST_POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable" go test -count=1 -p=1 -tags=integration ./internal/database ./internal/user ./internal/equipment ./internal/workorder ./internal/maintenance
+	TEST_DATABASE_URL="postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@127.0.0.1:$(TEST_POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable" go test -count=1 -p=1 -tags=integration ./internal/database ./internal/user ./internal/equipment ./internal/workorder ./internal/maintenance ./internal/audit
 
 vet:
 	go vet ./...
